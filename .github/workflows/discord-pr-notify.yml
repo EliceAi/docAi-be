@@ -1,0 +1,37 @@
+name: Discord PR Notify
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, closed]
+    branches: [dev, main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    # 열림 알림은 Draft가 아닐 때만, 닫힘 알림은 머지됐을 때만 보낸다
+    if: >
+      (github.event.action != 'closed' && github.event.pull_request.draft == false) ||
+      (github.event.action == 'closed' && github.event.pull_request.merged == true)
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ACTION: ${{ github.event.action }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          URL: ${{ github.event.pull_request.html_url }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD: ${{ github.event.pull_request.head.ref }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+        run: |
+          if [ "$ACTION" = "closed" ]; then
+            MSG=$(printf '**[머지] %s 브랜치 업데이트**\n#%s %s\n%s -> %s, 머지: %s\n%s\n%s 브랜치를 pull 받아 주세요.' \
+              "$BASE" "$PR_NUM" "$TITLE" "$HEAD" "$BASE" "$MERGED_BY" "$URL" "$BASE")
+          else
+            MSG=$(printf '**[PR] 리뷰 요청**\n#%s %s\n%s -> %s, 작성자: %s\n%s' \
+              "$PR_NUM" "$TITLE" "$HEAD" "$BASE" "$AUTHOR" "$URL")
+          fi
+
+          jq -n --arg content "$MSG" '{content: $content}' \
+            | curl -sS -f -X POST -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
