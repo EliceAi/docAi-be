@@ -40,3 +40,8 @@ logs/
 *.sqlite
 
 .DS_Store
+
+# Local-only document data
+data/
+*.log
+.env.local

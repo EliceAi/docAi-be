@@ -22,12 +22,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             HttpMessageNotReadableException.class,
-            MethodArgumentTypeMismatchException.class
+            MethodArgumentTypeMismatchException.class,
+            org.springframework.web.multipart.MaxUploadSizeExceededException.class,
+            org.springframework.validation.BindException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class
     })
     public ResponseEntity<ApiResponse<Void>> handleInvalidInput(Exception e) {
         return ResponseEntity.status(ErrorCode.INVALID_INPUT.getStatus())
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT));
     }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConflict(Exception e) {return ResponseEntity.status(409).body(ApiResponse.error(ErrorCode.DOCUMENT_CONFLICT));}
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {

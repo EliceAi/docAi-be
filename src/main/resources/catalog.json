@@ -1,0 +1,186 @@
+[
+  {
+    "name": "임대차계약서",
+    "category": "집",
+    "group": "집 구하기",
+    "description": "임대인 = 등기부 소유자인지, 특약, 관리비",
+    "code": "LEASE",
+    "available": true
+  },
+  {
+    "name": "등기부등본",
+    "category": "집",
+    "group": "집 구하기",
+    "description": "소유자, 근저당·가압류, 신탁 여부",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "건축물대장",
+    "category": "집",
+    "group": "집 구하기",
+    "description": "위반건축물, 주택 용도인지",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "중개대상물 확인·설명서",
+    "category": "집",
+    "group": "집 구하기",
+    "description": "계약서·등기부와 내용 일치",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "전세보증보험 안내·가입서",
+    "category": "집",
+    "group": "집 구하기",
+    "description": "가입 가능 여부, 보증 한도",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "전세자금대출 약정서",
+    "category": "집",
+    "group": "집 구하기",
+    "description": "금리 방식, 만기, 연장 조건",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "전입신고·확정일자 안내",
+    "category": "집",
+    "group": "입주·거주",
+    "description": "입주일 당일 신고",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "관리비 고지서",
+    "category": "집",
+    "group": "입주·거주",
+    "description": "계약서와 다른 청구",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "공과금 고지서",
+    "category": "집",
+    "group": "입주·거주",
+    "description": "납부 기한, 가산금",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "보증금·월세 인상 통지",
+    "category": "집",
+    "group": "입주·거주",
+    "description": "인상률 상한, 통지 시점",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "갱신·퇴거 통지",
+    "category": "집",
+    "group": "계약 종료·이사",
+    "description": "만료 6~2개월 전 통지",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "원상복구·정산 요구서",
+    "category": "집",
+    "group": "계약 종료·이사",
+    "description": "통상 마모까지 청구하는지",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "보증금 미반환 시 절차 안내",
+    "category": "집",
+    "group": "계약 종료·이사",
+    "description": "이사 전 임차권등기",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "근로계약서",
+    "category": "일",
+    "group": "취업·근로 시작",
+    "description": "필수 기재사항, 최저임금, 주휴수당",
+    "code": "EMPLOYMENT",
+    "available": true
+  },
+  {
+    "name": "연봉계약서",
+    "category": "일",
+    "group": "취업·근로 시작",
+    "description": "고정 연장수당이 몇 시간분인지",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "수습·인턴 계약서",
+    "category": "일",
+    "group": "취업·근로 시작",
+    "description": "수습 감액 기간·대상 조건",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "프리랜서 용역계약서 (3.3%)",
+    "category": "일",
+    "group": "취업·근로 시작",
+    "description": "근로자처럼 일하는지, 대금 지급일",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "비밀유지·경업금지 서약서",
+    "category": "일",
+    "group": "취업·근로 시작",
+    "description": "금지 기간·지역, 배상액",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "입사 서류 요구 목록",
+    "category": "일",
+    "group": "취업·근로 시작",
+    "description": "요구하는 서류가 정상인지",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "임금명세서",
+    "category": "일",
+    "group": "급여·퇴직",
+    "description": "계약서와 금액 대조",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "해고 통지서",
+    "category": "일",
+    "group": "급여·퇴직",
+    "description": "서면 여부, 30일 전 예고",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "사직서·퇴직 정산",
+    "category": "일",
+    "group": "급여·퇴직",
+    "description": "퇴직금 대상 여부",
+    "code": "",
+    "available": false
+  },
+  {
+    "name": "실업급여 안내",
+    "category": "일",
+    "group": "급여·퇴직",
+    "description": "자발적 퇴사 예외 사유",
+    "code": "",
+    "available": false
+  }
+]
