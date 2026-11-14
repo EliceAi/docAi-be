@@ -22,7 +22,33 @@ global/               common/(ApiResponse, BaseEntity), config/, error/(ErrorCod
 - Controller는 `request.toCommand()`로 Service를 호출하고, 받은 Info를 `XxxResponse.from(info)`로 바꿔 `ApiResponse`로 감싸 반환한다. 로직이나 Repository 호출은 넣지 않는다.
 - Service는 Command(또는 ID 같은 단순 값)를 받아 Info를 반환한다. Entity를 반환하면 지연 로딩 오류와 엔티티 노출이 생기므로 반환하지 않는다.
 - `domain`은 `web`을 import하지 않는다. 같은 서비스를 스케줄러나 테스트에서도 부를 수 있게 하기 위해서다.
-- 다른 기능의 데이터가 필요하면 그 기능의 Service나 Repository를 주입받는다.
+- 다른 기능의 데이터가 필요하면 그 기능의 Service만 주입받는다. 다른 기능의 Repository·Entity는 직접 쓰지 않는다. 호출할 수 있는 메서드는 아래 "담당과 연결 메서드" 표에 있는 것만 쓰고, 없으면 새로 만들지 말고 담당자에게 요청한다.
+- 다른 기능의 Entity와는 JPA 연관관계를 맺지 않고 ID(Long, UUID) 필드로만 가진다. 다른 기능의 폴더(`web/{기능}`, `domain/{기능}`) 파일은 수정하지 않는다.
+
+## 담당과 연결 메서드
+
+- A(분석): `analysis`, `chat`, `law`. B(서비스): `user`, `documenttype`, `contract`, `comparison`, `schedule`, `notification`.
+- 메서드는 주인이 만들고 상대는 부르기만 한다. 반환은 Info record. 시그니처를 바꾸려면 상대와 먼저 합의한다.
+- 연결 메서드는 호출한 쪽 트랜잭션 안에서 부른다. 잠금 순서는 계약서 → 비교 → 분석. GPT 호출만 트랜잭션 밖.
+
+| 메서드 | 주인 | 부르는 곳 |
+| --- | --- | --- |
+| `ContractService.getForAnalysis(userId, contractId)` | B | 분석 요청, 분석 이미지 읽기 |
+| `ContractService.lockForUpdate(contractId)` | B | 분석 요청 (트랜잭션 맨 처음) |
+| `ContractService.linkLatestAnalysis(versionId, analysisId)` | B | 분석 COMPLETED 전환이 1행 바뀐 트랜잭션 안에서만 |
+| `ContractService.setTitleIfEmpty(contractId, title)` | B | 분석 완료 |
+| `ContractService.findArchivedSameType(userId, documentTypeCode, excludeContractId)` | B | 비슷한 계약서 판단 |
+| `ContractService.getSummary(userId, contractId)` | B | AI 질문, 대화 기록 |
+| `ComparisonService.getForChat(userId, comparisonId)` | B | AI 질문 |
+| `NotificationService.createAnalysisResult(userId, analysisId, type, title, subTitle)` | B | 분석 완료·실패 (상태 전환과 같은 트랜잭션) |
+| `AnalysisService.getRef(userId, analysisId)` | A | 일정 후보 조회 |
+| `AnalysisService.getVersionState(versionId)` | A | 계약서 상태 판단, 분석 중 검사 |
+| `AnalysisService.getSummary(analysisId)` | A | 내 계약서 목록·상세, 비교 가능 여부 |
+| `AnalysisService.getScheduleCandidates(analysisId)` | A | 일정 후보, 보관, 수정본 확정 |
+| `AnalysisService.getComparisonSource(analysisId)` | A | 수정본 비교 (JUDGING·제외 조항은 넣지 않음) |
+| `AnalysisService.clearSimilarContract(versionId)` | A | 수정본 확정 |
+| `ChatService.moveContract(fromContractId, toContractId)` | A | 수정본 확정 |
+| `GptClient.call(purpose, request, responseType, ctx)` | A (`domain/analysis/client`) | 수정본 비교 설명 |
 
 ## 작성 규칙
 
