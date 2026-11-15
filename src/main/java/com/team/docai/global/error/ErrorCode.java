@@ -13,6 +13,9 @@ public enum ErrorCode {
     FORBIDDEN(403, "권한이 없습니다."),
     INTERNAL_SERVER_ERROR(500, "서버 오류가 발생했습니다."),
 
+    // User
+    RATE_LIMITED(429, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+
     // Document
 
     // Law
