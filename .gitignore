@@ -43,3 +43,6 @@ logs/
 
 ### AI 도구 작업 기록 (oh-my-claudecode) ###
 .omc/
+
+# Local contract images
+storage/

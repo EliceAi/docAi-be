@@ -26,5 +26,11 @@ law-api:
   key: ${LAW_API_KEY:}
 
 docai:
+  storage:
+    root: ${STORAGE_ROOT:./storage}
   auth:
     token-secret: ${DOCAI_TOKEN_SECRET:}
+
+spring.servlet.multipart:
+  max-file-size: 20MB
+  max-request-size: 105MB
