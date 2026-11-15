@@ -4,18 +4,29 @@ on:
   pull_request:
     types: [opened, reopened, ready_for_review, closed]
     branches: [dev, main]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   notify:
     runs-on: ubuntu-latest
-    # 열림 알림은 Draft가 아닐 때만, 닫힘 알림은 머지됐을 때만 보낸다
+    permissions:
+      pull-requests: read
+    # 열림: Draft가 아닐 때만 / 닫힘: 머지됐을 때만 / 리뷰: dev·main 대상 PR이 승인됐을 때만
     if: >
-      (github.event.action != 'closed' && github.event.pull_request.draft == false) ||
-      (github.event.action == 'closed' && github.event.pull_request.merged == true)
+      (github.event_name == 'pull_request' && (
+        (github.event.action != 'closed' && github.event.pull_request.draft == false) ||
+        (github.event.action == 'closed' && github.event.pull_request.merged == true))) ||
+      (github.event_name == 'pull_request_review' &&
+        github.event.review.state == 'approved' &&
+        (github.event.pull_request.base.ref == 'dev' || github.event.pull_request.base.ref == 'main'))
     steps:
       - name: Send Discord notification
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
           ACTION: ${{ github.event.action }}
           PR_NUM: ${{ github.event.pull_request.number }}
           TITLE: ${{ github.event.pull_request.title }}
@@ -24,8 +35,23 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.ref }}
           BASE: ${{ github.event.pull_request.base.ref }}
           MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+          REVIEWER: ${{ github.event.review.user.login }}
+          # 브랜치 보호 규칙의 승인 수와 같게 맞춘다
+          REQUIRED_APPROVALS: 1
         run: |
-          if [ "$ACTION" = "closed" ]; then
+          if [ "$EVENT" = "pull_request_review" ]; then
+            # 사람별 마지막 리뷰가 승인인 수를 센다 (코멘트만 남긴 리뷰는 제외)
+            APPROVALS=$(gh api "repos/$REPO/pulls/$PR_NUM/reviews" --paginate \
+              --jq '.[] | select(.state != "COMMENTED") | [.user.login, .state] | @tsv' \
+              | awk -F'\t' '{last[$1]=$2} END {n=0; for (u in last) if (last[u]=="APPROVED") n++; print n}')
+            # 기준을 막 채웠을 때 한 번만 보낸다
+            if [ "$APPROVALS" -ne "$REQUIRED_APPROVALS" ]; then
+              echo "승인 $APPROVALS/$REQUIRED_APPROVALS: 알림 없음"
+              exit 0
+            fi
+            MSG=$(printf '**[승인] 머지 가능**\n#%s %s\n%s -> %s, 승인 %s/%s (마지막 승인: %s)\n%s\n%s님, 머지해 주세요.' \
+              "$PR_NUM" "$TITLE" "$HEAD" "$BASE" "$APPROVALS" "$REQUIRED_APPROVALS" "$REVIEWER" "$URL" "$AUTHOR")
+          elif [ "$ACTION" = "closed" ]; then
             MSG=$(printf '**[머지] %s 브랜치 업데이트**\n#%s %s\n%s -> %s, 머지: %s\n%s\n%s 브랜치를 pull 받아 주세요.' \
               "$BASE" "$PR_NUM" "$TITLE" "$HEAD" "$BASE" "$MERGED_BY" "$URL" "$BASE")
           else
