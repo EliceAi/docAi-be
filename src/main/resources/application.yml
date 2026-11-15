@@ -24,3 +24,7 @@ anthropic:
 
 law-api:
   key: ${LAW_API_KEY:}
+
+docai:
+  auth:
+    token-secret: ${DOCAI_TOKEN_SECRET:}
