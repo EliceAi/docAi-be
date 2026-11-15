@@ -45,4 +45,4 @@ logs/
 .omc/
 
 # Local contract images
-storage/
+/storage/
