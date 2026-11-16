@@ -42,7 +42,8 @@ public class ContractService {
  public List<ArchivedContractInfo> findArchivedSameType(UUID userId,String documentTypeCode,Long excludeContractId){return List.of();}
  @Transactional
  public CreateContractInfo create(UUID userId,UUID idempotencyKey,CreateContractCommand command){
-  if(command.pages()==null||command.pages().isEmpty()||command.pages().size()>30)throw new BusinessException(ErrorCode.INVALID_FILE);
+  if(command.pages()==null||command.pages().isEmpty())throw new BusinessException(ErrorCode.INVALID_INPUT);
+  if(command.pages().size()>30)throw new BusinessException(ErrorCode.INVALID_FILE);
   if(command.maskedCounts()==null||command.maskedCounts().size()!=command.pages().size()||command.maskedCounts().stream().anyMatch(n->n==null||n<0))throw new BusinessException(ErrorCode.INVALID_INPUT);
   long total=command.pages().stream().mapToLong(a->a.length).sum();if(total>100L*1024*1024)throw new BusinessException(ErrorCode.FILE_TOO_LARGE);
   String hash=requestHash(command);

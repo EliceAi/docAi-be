@@ -100,4 +100,48 @@ class ContractIntegrationTest {
   assertThrows(BusinessException.class,()->storage.read("../.env"));assertEquals(List.of(),service.findArchivedSameType(user,"EMPLOYMENT",1L));
   notifications.createAnalysisResult(user,1L,"ANALYSIS_DONE","title","subtitle");assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM notification WHERE user_id=?",Integer.class,user));
  }
+
+ @Test void missingRequiredPagesReturnsInvalidInput() throws Exception {
+  mvc.perform(multipart("/api/contracts").param("documentTypeCode","EMPLOYMENT").header("Idempotency-Key",UUID.randomUUID().toString()).header("Authorization","Bearer "+tokens.issue(user))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+ }
+ @Test void malformedCountsCannotIgnoreTrailingJson() throws Exception {
+  request(user,UUID.randomUUID(),"EMPLOYMENT","[0] true",image()).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+ }
+ @Test void wrongRequestContentTypeDoesNotBecomeServerError() throws Exception {
+  mvc.perform(post("/api/contracts").contentType("application/json").content("{}").header("Idempotency-Key",UUID.randomUUID().toString()).header("Authorization","Bearer "+tokens.issue(user))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+ }
+ @Test void thirtyPagesAllowedButThirtyOneRejected() throws Exception {
+  byte[] png=image();var files=java.util.Collections.nCopies(30,png);var counts=java.util.Collections.nCopies(30,0);
+  var created=service.create(user,UUID.randomUUID(),new CreateContractCommand("EMPLOYMENT",files,counts));assertEquals(30,service.getForAnalysis(user,created.contractId()).pages().size());
+  var request=multipart("/api/contracts");request.param("documentTypeCode","EMPLOYMENT").header("Idempotency-Key",UUID.randomUUID().toString()).header("Authorization","Bearer "+tokens.issue(user));
+  for(int n=0;n<31;n++)request.file(new MockMultipartFile("pages","page.png","image/png",png));
+  mvc.perform(request).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_FILE"));
+ }
+ @Test void failedSecondPageRollsBackAndSameKeyCanRetry() throws Exception {
+  UUID key=UUID.randomUUID();byte[] png=image();
+  var bad=new CreateContractCommand("EMPLOYMENT",List.of(png,new byte[]{1,2}),List.of(0,0));
+  assertThrows(BusinessException.class,()->service.create(user,key,bad));
+  assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM contract WHERE user_id=?",Integer.class,user));
+  assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM idempotency_record WHERE user_id=?",Integer.class,user));
+  var saved=service.create(user,key,command());assertEquals("DRAFT",saved.status());
+ }
+ @Test void sameKeyDoesNotShareResponseAcrossUsers() throws Exception {
+  UUID second=UUID.randomUUID();jdbc.update("INSERT INTO users(user_id,device_id_hash,created_at) VALUES (?,?,now())",second,UUID.randomUUID().toString().replace("-","").repeat(2));UUID key=UUID.randomUUID();var cmd=command();
+  long firstId=service.create(user,key,cmd).contractId();long secondId=service.create(second,key,cmd).contractId();assertNotEquals(firstId,secondId);
+  assertThrows(BusinessException.class,()->service.getForAnalysis(user,secondId));
+ }
+
+ @Test void excessiveFileAndTotalSizesReturn413() throws Exception {
+  var single=multipart("/api/contracts").file(new MockMultipartFile("pages","large.png","image/png",new byte[0]){@Override public long getSize(){return 20L*1024*1024+1;}}).param("documentTypeCode","EMPLOYMENT").header("Idempotency-Key",UUID.randomUUID().toString()).header("Authorization","Bearer "+tokens.issue(user));
+  mvc.perform(single).andExpect(status().isPayloadTooLarge()).andExpect(jsonPath("$.code").value("FILE_TOO_LARGE"));
+  var many=multipart("/api/contracts");many.param("documentTypeCode","EMPLOYMENT").header("Idempotency-Key",UUID.randomUUID().toString()).header("Authorization","Bearer "+tokens.issue(user));
+  for(int n=0;n<6;n++)many.file(new MockMultipartFile("pages","large.png","image/png",new byte[0]){@Override public long getSize(){return 20L*1024*1024;}});
+  mvc.perform(many).andExpect(status().isPayloadTooLarge()).andExpect(jsonPath("$.code").value("FILE_TOO_LARGE"));
+ }
+ @Test void jpegInputAndBlankTitleAndMissingFile() throws Exception {
+  byte[] jpg=storage.toJpeg(image());request(user,UUID.randomUUID(),"LEASE",null,jpg).andExpect(status().isCreated());
+  long id=service.create(user,UUID.randomUUID(),command()).contractId();jdbc.update("UPDATE contract SET title='' WHERE contract_id=?",id);service.setTitleIfEmpty(id,"계약서 이름");assertEquals("계약서 이름",jdbc.queryForObject("SELECT title FROM contract WHERE contract_id=?",String.class,id));
+  assertEquals("FILE_NOT_FOUND",assertThrows(BusinessException.class,()->storage.read("contracts/"+user+"/"+UUID.randomUUID()+".jpg")).getErrorCode().name());
+  assertThrows(IllegalTransactionStateException.class,()->service.linkLatestAnalysis(1L,1L));
+ }
 }

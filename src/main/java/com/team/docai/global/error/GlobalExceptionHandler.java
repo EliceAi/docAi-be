@@ -22,6 +22,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             HttpMessageNotReadableException.class,
+            org.springframework.web.HttpMediaTypeNotSupportedException.class,
             org.springframework.web.bind.ServletRequestBindingException.class,
             org.springframework.validation.BindException.class,
             MethodArgumentTypeMismatchException.class
