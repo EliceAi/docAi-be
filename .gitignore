@@ -43,3 +43,6 @@ logs/
 
 ### AI 도구 작업 기록 (oh-my-claudecode) ###
 .omc/
+
+### 업로드 이미지 저장 폴더 (STORAGE_ROOT) ###
+storage/

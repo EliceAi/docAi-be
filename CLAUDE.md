@@ -34,6 +34,7 @@ global/               common/(ApiResponse, BaseEntity), config/, error/(ErrorCod
 | 메서드 | 주인 | 부르는 곳 |
 | --- | --- | --- |
 | `ContractService.getForAnalysis(userId, contractId)` | B | 분석 요청, 분석 이미지 읽기 |
+| `FileStorage.read(imageKey)` | B (`global/storage`) | 분석 이미지 읽기. 이미지는 서버 로컬 폴더(`STORAGE_ROOT`)에 저장, DB에는 경로만 |
 | `ContractService.lockForUpdate(contractId)` | B | 분석 요청 (트랜잭션 맨 처음) |
 | `ContractService.linkLatestAnalysis(versionId, analysisId)` | B | 분석 COMPLETED 전환이 1행 바뀐 트랜잭션 안에서만 |
 | `ContractService.setTitleIfEmpty(contractId, title)` | B | 분석 완료 |
@@ -55,6 +56,7 @@ global/               common/(ApiResponse, BaseEntity), config/, error/(ErrorCod
 - DTO(Request, Response, Command, Info)는 record. Request 검증 메시지는 한국어.
 - Entity: `@Setter` 없음, `@NoArgsConstructor(access = PROTECTED)`, `@Builder`는 private 생성자에. 생성은 정적 팩토리(`create`), 값 변경은 의미 있는 이름의 메서드(`complete`, `fail`). enum은 `EnumType.STRING`, 연관관계는 `LAZY`, 생성·수정 시각이 필요하면 `BaseEntity` 상속.
 - Service: 클래스에 `@Transactional(readOnly = true)`, 쓰기 메서드에만 `@Transactional`.
+  단, GPT 등 외부 API를 부르는 클래스는 예외: 트랜잭션을 붙이지 않고, 저장은 다른 빈의 짧은 `@Transactional` 메서드로 한다. 응답을 기다리는 동안 DB 연결과 행 잠금을 쥐지 않기 위해서다.
 - 오류는 `throw new BusinessException(ErrorCode.XXX)`. 새 코드는 `ErrorCode`의 해당 기능 주석 구역에 `{대상}_{상황}(상태코드, "한국어 메시지")`로 추가한다. 응답 변환은 `GlobalExceptionHandler`가 하므로 Controller에서 try-catch로 응답을 만들지 않는다.
 - URL은 `/api/` 아래 복수형 자원 이름. 생성은 201, 그 밖의 성공은 200.
 - API 키 등 비밀값은 코드에 쓰지 않고 `application.yml`과 환경 변수에서 읽는다.
