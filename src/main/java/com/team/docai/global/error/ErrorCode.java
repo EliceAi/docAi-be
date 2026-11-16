@@ -21,6 +21,8 @@ public enum ErrorCode {
     // Law
 
     // AI
+    AI_REQUEST_FAILED(503, "AI 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요."),
+    AI_TIMEOUT(504, "AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."),
 
     // Chat
 
