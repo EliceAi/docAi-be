@@ -22,6 +22,19 @@ spring:
 anthropic:
   api-key: ${ANTHROPIC_API_KEY:}
 
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_MODEL:gpt-4o-2024-08-06}
+  base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  connect-timeout: 10s
+  read-timeout: 120s
+  # 첫 시도 제외 재시도 횟수. 통신 오류(429, 5xx, 시간 초과, 네트워크 오류)만 1회 (담당_연결지점 A8, 2026-11-16 결정)
+  max-retries: 1
+  initial-backoff: 1s
+  max-backoff: 10s
+  # Retry-After 가 이보다 길면 기다리지 않고 실패
+  max-retry-after: 30s
+
 law-api:
   key: ${LAW_API_KEY:}
 
