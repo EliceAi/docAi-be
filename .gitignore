@@ -45,4 +45,4 @@ logs/
 .omc/
 
 ### 업로드 이미지 저장 폴더 (STORAGE_ROOT) ###
-storage/
+/storage/
