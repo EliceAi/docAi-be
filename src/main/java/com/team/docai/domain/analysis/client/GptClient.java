@@ -116,7 +116,7 @@ public class GptClient {
             throw new GptCallException(GptFailureReason.NOT_CONFIGURED, detail, 0);
         }
 
-        String body = buildBody(request);
+        String body = buildBody(purpose, request);
         int maxAttempts = Math.max(0, properties.maxRetries()) + 1;
 
         for (int attempt = 1; ; attempt++) {
@@ -153,7 +153,7 @@ public class GptClient {
 
     // ---- 요청 ----
 
-    private String buildBody(GptRequest request) {
+    private String buildBody(GptPurpose purpose, GptRequest request) {
         List<Map<String, Object>> messages = new ArrayList<>();
         if (StringUtils.hasText(request.systemPrompt())) {
             messages.add(Map.of("role", "system", "content", request.systemPrompt()));
@@ -180,10 +180,22 @@ public class GptClient {
         body.put("model", properties.model());
         body.put("messages", messages);
         body.put("response_format", Map.of("type", "json_schema", "json_schema", jsonSchema));
-        if (request.maxOutputTokens() != null) {
-            body.put("max_completion_tokens", request.maxOutputTokens());
+        // 추론 모델(gpt-5 계열): temperature 를 받지 않고, max_completion_tokens 는 추론 토큰을 포함한다.
+        // 요청에 값이 없으면 목적별 설정값(openai.purposes)을 쓴다. 추론 모델이 아니면 예전처럼 요청 값만 보낸다.
+        boolean reasoning = properties.reasoningModel();
+        OpenAiProperties.Purpose defaults = properties.purpose(purpose.name());
+        Integer maxTokens = request.maxOutputTokens() != null ? request.maxOutputTokens()
+                : (reasoning ? defaults.maxCompletionTokens() : null);
+        if (maxTokens != null) {
+            body.put("max_completion_tokens", maxTokens);
         }
-        if (request.temperature() != null) {
+        if (reasoning) {
+            String effort = request.reasoningEffort() != null ? request.reasoningEffort().apiValue()
+                    : defaults.reasoningEffort();
+            if (effort != null) {
+                body.put("reasoning_effort", effort);
+            }
+        } else if (request.temperature() != null) {
             body.put("temperature", request.temperature());
         }
         try {
@@ -278,7 +290,10 @@ public class GptClient {
             throw completion.failure(GptFailureReason.REFUSAL, "콘텐츠 필터로 중단됨");
         }
         if ("length".equals(completion.finishReason())) {
-            throw completion.failure(GptFailureReason.LENGTH, "출력 토큰 한도로 응답이 잘림");
+            // 추론 모델은 추론 토큰도 한도에 들어가 답을 한 글자도 못 쓰고 끝날 수 있다 (content 비어 있음)
+            throw completion.failure(GptFailureReason.LENGTH, StringUtils.hasText(completion.content())
+                    ? "출력 토큰 한도로 응답이 잘림"
+                    : "출력 토큰 한도로 응답이 비어 있음 (추론에 한도를 다 씀)");
         }
         if (!StringUtils.hasText(completion.content())) {
             throw completion.failure(GptFailureReason.INVALID_JSON,

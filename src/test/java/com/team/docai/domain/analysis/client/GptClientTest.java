@@ -685,4 +685,127 @@ class GptClientTest {
 
         assertThat(e.getDetail()).contains("$.count").contains("InvalidFormatException").doesNotContain("many");
     }
+
+    // ---- gpt-5.5 (추론 모델) ----
+
+    GptClient clientFor(String model, MockRestServiceServer[] holder) {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        holder[0] = MockRestServiceServer.bindTo(builder).build();
+        OpenAiProperties properties = new OpenAiProperties("test-key", model, BASE_URL,
+                Duration.ofSeconds(1), Duration.ofSeconds(1), 1,
+                Duration.ofSeconds(1), Duration.ofSeconds(10), Duration.ofSeconds(30));
+        return new GptClient(builder.build(), properties, writer, objectMapper, sleeps::add);
+    }
+
+    @Test
+    void 추론_모델은_목적별_추론_강도와_출력_한도를_보내고_temperature는_보내지_않는다() throws Exception {
+        MockRestServiceServer[] holder = new MockRestServiceServer[1];
+        GptClient gpt55 = clientFor("gpt-5.5", holder);
+        holder[0].expect(requestTo(URL))
+                .andExpect(jsonPath("$.model").value("gpt-5.5"))
+                .andExpect(jsonPath("$.reasoning_effort").value("low"))
+                .andExpect(jsonPath("$.max_completion_tokens").value(32000))
+                .andExpect(jsonPath("$.temperature").doesNotExist())
+                .andRespond(withSuccess(ok(), MediaType.APPLICATION_JSON));
+        holder[0].expect(requestTo(URL))
+                .andExpect(jsonPath("$.reasoning_effort").value("medium"))
+                .andExpect(jsonPath("$.max_completion_tokens").value(16000))
+                .andRespond(withSuccess(ok(), MediaType.APPLICATION_JSON));
+
+        GptRequest withTemperature = new GptRequest("system", List.of(GptContentPart.text("x")), "sample", SCHEMA,
+                null, 0.2, null);
+        gpt55.call(GptPurpose.EXTRACT, withTemperature, Sample.class, GptContext.none());
+        gpt55.call(GptPurpose.JUDGE, textRequest(), Sample.class, GptContext.none());
+
+        holder[0].verify();
+    }
+
+    @Test
+    void 요청에_넣은_추론_강도와_한도가_설정값보다_우선한다() throws Exception {
+        MockRestServiceServer[] holder = new MockRestServiceServer[1];
+        GptClient gpt55 = clientFor("gpt-5.5", holder);
+        holder[0].expect(requestTo(URL))
+                .andExpect(jsonPath("$.reasoning_effort").value("high"))
+                .andExpect(jsonPath("$.max_completion_tokens").value(1234))
+                .andRespond(withSuccess(ok(), MediaType.APPLICATION_JSON));
+
+        gpt55.call(GptPurpose.CHAT, textRequest().with(1234, ReasoningEffort.HIGH), Sample.class, GptContext.none());
+
+        holder[0].verify();
+    }
+
+    @Test
+    void 추론_모델이_아니면_reasoning_effort와_기본_한도를_보내지_않고_temperature는_보낸다() throws Exception {
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.reasoning_effort").doesNotExist())
+                .andExpect(jsonPath("$.max_completion_tokens").doesNotExist())
+                .andExpect(jsonPath("$.temperature").value(0.2))
+                .andRespond(withSuccess(ok(), MediaType.APPLICATION_JSON));
+
+        client.call(GptPurpose.EXTRACT, new GptRequest(null, List.of(GptContentPart.text("x")), "sample", SCHEMA,
+                null, 0.2, ReasoningEffort.HIGH), Sample.class, GptContext.none());
+
+        server.verify();
+    }
+
+    @Test
+    void 추론에_한도를_다_써서_빈_답이면_LENGTH이고_재시도하지_않는다() throws Exception {
+        MockRestServiceServer[] holder = new MockRestServiceServer[1];
+        GptClient gpt55 = clientFor("gpt-5.5", holder);
+        holder[0].expect(ExpectedCount.once(), requestTo(URL))
+                .andRespond(withSuccess(completion("", "length", null), MediaType.APPLICATION_JSON));
+
+        GptCallException e = null;
+        try {
+            gpt55.call(GptPurpose.EXTRACT, textRequest(), Sample.class, GptContext.none());
+        } catch (GptCallException caught) {
+            e = caught;
+        }
+
+        holder[0].verify();
+        assertThat(e).isNotNull();
+        assertThat(e.getReason()).isEqualTo(GptFailureReason.LENGTH);
+        assertThat(e.getDetail()).contains("비어 있음");
+        assertThat(e.getAttempts()).isEqualTo(1);
+        assertThat(sleeps).isEmpty();
+        AiCallLogCommand log = logs(1).get(0);
+        assertThat(log.status()).isEqualTo(AiCallStatus.FAILED);
+        assertThat(log.outputTokens()).isEqualTo(30);
+    }
+
+    @Test
+    void 추론_모델_판별() {
+        assertThat(props("gpt-5.5").reasoningModel()).isTrue();
+        assertThat(props("gpt-5").reasoningModel()).isTrue();
+        assertThat(props("o3-mini").reasoningModel()).isTrue();
+        assertThat(props("gpt-4o-2024-08-06").reasoningModel()).isFalse();
+        assertThat(props("").model()).isEqualTo("gpt-5.5");
+    }
+
+    static OpenAiProperties props(String model) {
+        return new OpenAiProperties("k", model, BASE_URL, Duration.ofSeconds(1), Duration.ofSeconds(1), 1,
+                Duration.ofSeconds(1), Duration.ofSeconds(10), Duration.ofSeconds(30));
+    }
+
+    @Test
+    void 설정_바인딩_기본_모델과_목적별_값() {
+        Map<String, String> source = new LinkedHashMap<>();
+        source.put("openai.api-key", "k");
+        source.put("openai.purposes.judge-more.reasoning-effort", "HIGH");
+        source.put("openai.purposes.chat.max-completion-tokens", "999");
+        OpenAiProperties bound = new org.springframework.boot.context.properties.bind.Binder(
+                new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(source))
+                .bind("openai", OpenAiProperties.class).get();
+
+        assertThat(bound.model()).isEqualTo("gpt-5.5");
+        assertThat(bound.readTimeout()).isEqualTo(Duration.ofSeconds(180));
+        assertThat(bound.purpose("EXTRACT")).isEqualTo(new OpenAiProperties.Purpose("low", 32000));
+        assertThat(bound.purpose("JUDGE_MORE")).isEqualTo(new OpenAiProperties.Purpose("high", 8000));
+        assertThat(bound.purpose("CHAT")).isEqualTo(new OpenAiProperties.Purpose("low", 999));
+        assertThatThrownBy(() -> new org.springframework.boot.context.properties.bind.Binder(
+                new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(
+                        Map.of("openai.purposes.extract.reasoning-effort", "minimal")))
+                .bind("openai", OpenAiProperties.class).get())
+                .hasRootCauseInstanceOf(IllegalArgumentException.class);
+    }
 }
