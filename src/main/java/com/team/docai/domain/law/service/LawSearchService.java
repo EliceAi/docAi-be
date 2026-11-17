@@ -3,6 +3,7 @@ package com.team.docai.domain.law.service;
 import com.team.docai.global.config.LawProperties;
 import com.team.docai.domain.law.dto.ArticleNumber;
 import com.team.docai.domain.law.dto.GuidanceInfo;
+import com.team.docai.domain.law.dto.IssueTagInfo;
 import com.team.docai.domain.law.dto.LawArticleInfo;
 import com.team.docai.domain.law.entity.Law;
 import com.team.docai.domain.law.entity.LawAlias;
@@ -11,6 +12,7 @@ import com.team.docai.domain.law.entity.LawNames;
 import com.team.docai.domain.law.repository.DocumentTypeLawRepository;
 import com.team.docai.domain.law.repository.GuidanceRepository;
 import com.team.docai.domain.law.repository.IssueTagArticleRepository;
+import com.team.docai.domain.law.repository.IssueTagRepository;
 import com.team.docai.domain.law.repository.LawAliasRepository;
 import com.team.docai.domain.law.repository.LawArticleRepository;
 import com.team.docai.domain.law.repository.LawRepository;
@@ -55,7 +57,15 @@ public class LawSearchService {
     private final DocumentTypeLawRepository documentTypeLawRepository;
     private final IssueTagArticleRepository issueTagArticleRepository;
     private final GuidanceRepository guidanceRepository;
+    private final IssueTagRepository issueTagRepository;
     private final LawProperties properties;
+
+    /** 문서 종류의 문제 꼬리표 (분석 1차 프롬프트, 저장 전 목록 확인). 코드 순 */
+    public List<IssueTagInfo> findIssueTags(String documentTypeCode) {
+        return issueTagRepository.findByDocumentTypeCodeOrderByCodeAsc(documentTypeCode).stream()
+                .map(t -> new IssueTagInfo(t.getCode(), t.getName()))
+                .toList();
+    }
 
     /** 법령 이름(정식 명칭·띄어쓰기 다름·약칭)으로 법령 ID. 못 찾으면 empty. */
     public Optional<Long> resolveLawId(String name) {

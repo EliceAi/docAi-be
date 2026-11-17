@@ -129,4 +129,17 @@ public class Analysis {
                 .startedAt(now)
                 .build();
     }
+
+    /**
+     * 4단계(1차 묶음 병합) 결과 기록. 상태는 바꾸지 않는다 (상태 전환은 조건부 UPDATE).
+     * 진행 단계는 같은 트랜잭션에서 조건부 UPDATE(advance)로 FINDING_TERMS 가 된 뒤 부른다.
+     */
+    public void recordExtraction(String extractionJson, String clauseIndexJson, List<Integer> partialPages,
+                                 LocalDate lawBaseDate, String validationLogJson) {
+        this.extractionJson = extractionJson;
+        this.clauseIndexJson = clauseIndexJson;
+        this.partialPages = partialPages == null ? null : List.copyOf(partialPages);
+        this.lawBaseDate = lawBaseDate;
+        this.validationLogJson = validationLogJson;
+    }
 }

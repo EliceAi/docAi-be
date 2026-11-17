@@ -41,7 +41,8 @@ public class AnalysisRequestWriter {
 
     /**
      * B 의 lockForUpdate 는 MANDATORY 라 이 메서드의 트랜잭션 안에서만 부를 수 있다 (잠금은 커밋까지 유지).
-     * 한 트랜잭션: ① 계약서 행 잠금 ② 계약서 조회·소유권 (없음·남의 것·삭제 → CONTRACT_NOT_FOUND)
+     * 한 트랜잭션: ⓪ 소유권 먼저 확인 (없음·남의 것·삭제 → CONTRACT_NOT_FOUND). 남의 계약서 행에 잠금이 먼저 걸리지
+     * 않게 하기 위해서다 ① 계약서 행 잠금 ② 잠근 뒤 다시 조회 (잠금을 기다리는 동안 바뀐 종류·버전·보관·삭제를 반영)
      * ③ 보관됨 → CONTRACT_ARCHIVED ④ 같은 버전에 ANALYZING 이 있으면 그것을 돌려줌
      * ⑤ 없으면 분석(ANALYZING · READING_TEXT, 요청 시점 문서 종류)과 쪽 묶음 저장 ⑥ 커밋 후 시작 이벤트.
      * latest_analysis_id 는 바꾸지 않는다 (COMPLETED 때만).
@@ -49,6 +50,7 @@ public class AnalysisRequestWriter {
      */
     @Transactional
     public AnalysisRequestInfo createOrGetRunning(UUID userId, Long contractId) {
+        contractService.getForAnalysis(userId, contractId);
         contractService.lockForUpdate(contractId);
         ContractForAnalysisInfo contract = contractService.getForAnalysis(userId, contractId);
         if (contract.archived()) {

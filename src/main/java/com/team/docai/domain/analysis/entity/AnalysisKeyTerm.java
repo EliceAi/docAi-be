@@ -19,7 +19,8 @@ import java.util.Map;
 
 /**
  * 주요 조건 (analysis_key_term). (analysis_id, label) 은 UNIQUE (uq_key_term).
- * GPT 가 채우는 글자 칸(label, value, evidence)은 저장 전에 *_MAX_LENGTH 로 잘라서 넣는다.
+ * label 은 고정 목록(ExtractCatalog). value·evidence 는 계약서에서 온 값이라 자르지 않는다: value 가 넘으면 저장하지 않고
+ * state = NEEDS_CHECK, evidence 원문 인용이 넘으면 null (ExtractMerger, 기록은 analysis.validation_log_json).
  */
 @Entity
 @Table(name = "analysis_key_term")

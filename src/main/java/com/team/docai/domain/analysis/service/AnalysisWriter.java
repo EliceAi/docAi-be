@@ -54,6 +54,15 @@ public class AnalysisWriter {
      * ANALYZING → COMPLETED · DONE. 제외되지 않은 판정 중(JUDGING) 조항이 남아 있으면 바꾸지 않는다.
      * 1행 바뀌면 같은 트랜잭션에서 최신 분석 연결(B3, B 쪽 MANDATORY)과 완료 알림(B6).
      * 그 사이 계약서가 삭제되면 B3 이 CONTRACT_NOT_FOUND 를 던져 전체가 롤백되고, 파이프라인이 FAILED 로 바꾼다.
+     * <p>
+     * 잠금 순서 예외: 공통 규칙은 계약서 → 비교 → 분석인데, 여기서는 분석 행(markCompleted 의 UPDATE)을 먼저 잠그고
+     * 그다음 계약서 버전 행(B3 의 UPDATE contract_version)을 잠근다. 계약서 행(contract)은 잠그지 않는다.
+     * 계약서 쪽 트랜잭션(종류 변경·재업로드·보관)은 분석 중이면 409 로 끝나 분석 행을 잠그지 않으므로 서로 반대 순서로
+     * 기다리는 일이 없다. 이 메서드에 계약서 행을 잠그는 호출을 더하지 않는다.
+     * <p>
+     * 계약서 이름(B4 {@code ContractService.setTitleIfEmpty})은 이 메서드 안에서 markCompleted 뒤에 부르지 않는다.
+     * B4 는 contract 행을 FOR UPDATE 로 잠그므로 분석 → 계약서 순서가 되어, 계약서 → 분석 순서로 잠그는 분석 요청과
+     * 데드락이 날 수 있다. 이름은 완료 전 별도 트랜잭션에서 넣거나(계약서 잠금만 잡고 끝남), 완료 트랜잭션이 끝난 뒤에 부른다.
      *
      * @return 바뀌었으면 true
      */

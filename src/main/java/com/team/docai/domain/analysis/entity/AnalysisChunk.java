@@ -16,7 +16,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * 분석 쪽 묶음 (analysis_chunk). 약 5쪽씩, 경계 쪽은 다음 묶음과 겹칠 수 있다.
+ * 분석 쪽 묶음 (analysis_chunk). 5쪽씩, 묶음끼리 겹치지 않는다 (AnalysisRequestWriter.chunkRanges).
+ * 쪽 경계에 걸친 조항은 1차 병합(ExtractMerger)이 합친다.
  */
 @Entity
 @Table(name = "analysis_chunk")
@@ -71,5 +72,18 @@ public class AnalysisChunk {
                 .status(ChunkStatus.PENDING)
                 .retryCount(0)
                 .build();
+    }
+
+    /** 1차 호출 성공: 응답 JSON 저장. retryCount 는 응답 내용 오류로 다시 부른 횟수 */
+    public void complete(String resultJson, int retryCount) {
+        this.status = ChunkStatus.DONE;
+        this.resultJson = resultJson;
+        this.retryCount = retryCount;
+    }
+
+    /** 1차 호출 최종 실패 */
+    public void fail(int retryCount) {
+        this.status = ChunkStatus.FAILED;
+        this.retryCount = retryCount;
     }
 }
