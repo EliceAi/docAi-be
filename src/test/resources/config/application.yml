@@ -1,0 +1,8 @@
+# 테스트 전용 설정. Spring Boot 는 classpath:/application.yml 위에 classpath:/config/application.yml 을 덧씌운다.
+# 테스트에서는 분석 스케줄(AnalysisLivenessScheduler: heartbeat 갱신, 멈춘 분석 정리)만 끈다. 같은 DB 를 쓰는
+# 다른 사람·다른 프로세스의 분석 행을 테스트가 FAILED 로 바꾸지 않게 하기 위해서다. @EnableScheduling 과 다른 @Scheduled 는
+# 그대로 켜져 있고, 한 번 도는 일(AnalysisLiveness)은 테스트가 직접 부른다.
+docai:
+  analysis:
+    scheduler:
+      enabled: false

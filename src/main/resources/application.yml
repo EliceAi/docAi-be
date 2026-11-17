@@ -37,7 +37,7 @@ openai:
 
 law-api:
   key: ${LAW_API_KEY:}
-지
+
 docai:
   storage:
     root: ${STORAGE_ROOT:./storage}
