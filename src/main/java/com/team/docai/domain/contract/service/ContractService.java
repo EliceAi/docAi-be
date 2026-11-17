@@ -20,6 +20,17 @@ import java.nio.charset.StandardCharsets;
 public class ContractService {
  private final ContractRepository contracts;private final ContractVersionRepository versions;private final ContractPageRepository pages;
  private final DocumentTypeService types;private final FileStorage storage;private final JdbcTemplate jdbc;private final ObjectMapper mapper;
+ public byte[] readPage(UUID userId,Long contractId,int pageNo,Integer versionNo){
+  var contract=contracts.findByContractIdAndUserIdAndDeletedAtIsNull(contractId,userId).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+  var version=versions.findByContractIdAndVersionNo(contractId,versionNo==null?contract.getCurrentVersionNo():versionNo).orElseThrow(()->new BusinessException(ErrorCode.VERSION_NOT_FOUND));
+  var page=pages.findByVersionIdAndPageNo(version.getVersionId(),pageNo).orElseThrow(()->new BusinessException(ErrorCode.PAGE_NOT_FOUND));
+  return storage.read(page.getImageKey());
+ }
+ public ContractSummaryInfo getSummary(UUID userId,Long contractId){
+  var contract=contracts.findByContractIdAndUserIdAndDeletedAtIsNull(contractId,userId).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+  var version=versions.findByContractIdAndVersionNo(contractId,contract.getCurrentVersionNo()).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+  return new ContractSummaryInfo(contractId,contract.getTitle(),contract.isArchived(),version.getLatestAnalysisId());
+ }
  public ContractForAnalysisInfo getForAnalysis(UUID userId,Long contractId){
   var contract=contracts.findByContractIdAndUserIdAndDeletedAtIsNull(contractId,userId).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
   var version=versions.findByContractIdAndVersionNo(contractId,contract.getCurrentVersionNo()).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));

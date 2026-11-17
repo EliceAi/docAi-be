@@ -33,7 +33,9 @@ public enum ErrorCode {
     // Chat
 
     // Schedule
-    ;
+    SCHEDULE_NOT_FOUND(404, "일정을 찾을 수 없습니다."),
+    VERSION_NOT_FOUND(404, "해당 버전을 찾을 수 없습니다."),
+    PAGE_NOT_FOUND(404, "해당 쪽을 찾을 수 없습니다.");
 
     private final int status;
     private final String message;
