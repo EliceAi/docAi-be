@@ -4,4 +4,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 public interface ContractPageRepository extends JpaRepository<ContractPage,Long> {
  List<ContractPage> findByVersionIdOrderByPageNoAsc(Long id);
+ java.util.Optional<ContractPage> findByVersionIdAndPageNo(Long versionId,int pageNo);
 }
