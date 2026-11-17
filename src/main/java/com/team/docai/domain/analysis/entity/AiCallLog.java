@@ -2,6 +2,7 @@ package com.team.docai.domain.analysis.entity;
 
 import com.team.docai.domain.analysis.client.GptPurpose;
 import com.team.docai.domain.analysis.dto.AiCallLogCommand;
+import com.team.docai.global.util.TextTruncator;
 import com.team.docai.global.common.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -84,20 +85,13 @@ public class AiCallLog extends BaseEntity {
                 .chunkId(command.chunkId())
                 .comparisonId(command.comparisonId())
                 .conversationId(command.conversationId())
-                .model(truncate(command.model() == null ? "unknown" : command.model(), MODEL_MAX_LENGTH))
+                .model(TextTruncator.truncate(command.model() == null ? "unknown" : command.model(), MODEL_MAX_LENGTH))
                 .inputTokens(command.inputTokens())
                 .cachedInputTokens(command.cachedInputTokens())
                 .outputTokens(command.outputTokens())
                 .latencyMs(command.latencyMs())
                 .status(command.status())
-                .errorMessage(truncate(command.errorMessage(), ERROR_MESSAGE_MAX_LENGTH))
+                .errorMessage(TextTruncator.truncate(command.errorMessage(), ERROR_MESSAGE_MAX_LENGTH))
                 .build();
-    }
-
-    private static String truncate(String value, int max) {
-        if (value == null || value.length() <= max) {
-            return value;
-        }
-        return value.substring(0, max);
     }
 }

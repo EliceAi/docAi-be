@@ -24,6 +24,10 @@ public enum ErrorCode {
     FILE_NOT_FOUND(500, "저장된 이미지를 찾을 수 없습니다."),
     IDEMPOTENCY_KEY_REUSED(422, "같은 요청 키로 다른 내용을 보낼 수 없습니다."),
 
+    // Contract (계약서 코드는 B 담당. 분석 요청이 먼저 써서 A가 추가함. B가 계약서 API를 만들 때 이 구역을 이어 쓴다)
+    CONTRACT_NOT_FOUND(404, "계약서가 없거나 내 계약서가 아닙니다."),
+    CONTRACT_ARCHIVED(409, "보관된 계약서는 다시 분석할 수 없습니다. 바뀐 계약서는 새로 올려 수정본 비교로 확인해 주세요."),
+
     // Law
 
     // AI
