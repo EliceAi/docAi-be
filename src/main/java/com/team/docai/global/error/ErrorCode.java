@@ -18,11 +18,13 @@ public enum ErrorCode {
 
     // Document
     CONTRACT_NOT_FOUND(404, "계약서를 찾을 수 없습니다."),
+    CONTRACT_ARCHIVED(409, "보관된 계약서는 다시 분석할 수 없습니다. 바뀐 계약서는 새로 올려 수정본 비교로 확인해 주세요."),
     UNSUPPORTED_DOCUMENT_TYPE(400, "지원하지 않는 문서 종류입니다."),
     INVALID_FILE(400, "JPG 또는 PNG 이미지와 쪽 수를 확인해 주세요."),
     FILE_TOO_LARGE(413, "파일 용량이 제한을 초과했습니다."),
     FILE_NOT_FOUND(500, "저장된 이미지를 찾을 수 없습니다."),
     IDEMPOTENCY_KEY_REUSED(422, "같은 요청 키로 다른 내용을 보낼 수 없습니다."),
+
 
     // Law
 
