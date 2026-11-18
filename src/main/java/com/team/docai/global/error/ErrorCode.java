@@ -26,6 +26,12 @@ public enum ErrorCode {
     IDEMPOTENCY_KEY_REUSED(422, "같은 요청 키로 다른 내용을 보낼 수 없습니다."),
 
 
+    // Analysis
+    ANALYSIS_NOT_FOUND(404, "분석이 없거나 내 분석이 아닙니다."),
+    CLAUSE_NOT_FOUND(404, "해당 분석에 없는 조항입니다."),
+    ANALYSIS_NOT_COMPLETED(409, "분석이 끝나지 않았거나 실패한 분석입니다."),
+    SAMPLE_NOT_FOUND(404, "예시가 없는 문서 종류입니다."),
+
     // Law
 
     // AI
