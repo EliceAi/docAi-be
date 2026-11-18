@@ -7,6 +7,7 @@ import com.team.docai.domain.analysis.entity.AnalysisClauseRef;
 import com.team.docai.domain.analysis.entity.AnalysisClauseRelation;
 import com.team.docai.domain.analysis.entity.AnalysisFinding;
 import com.team.docai.domain.analysis.entity.AnalysisStatus;
+import com.team.docai.domain.analysis.entity.BasisType;
 import com.team.docai.domain.analysis.entity.ChunkStatus;
 import com.team.docai.domain.analysis.entity.ClauseVerdict;
 import com.team.docai.domain.analysis.entity.FindingKind;
@@ -166,7 +167,7 @@ public class AnalysisQueryService {
                 clause.getBasisType(),
                 related,
                 copyOrEmpty(clause.getAskCounterpartJson()),
-                clause.getOneLine());
+                clause.getOneLine()).withDisplayDefaults();
     }
 
     /** 예시 분석 조회. 예시가 없는 문서 종류면 SAMPLE_NOT_FOUND */
@@ -213,7 +214,7 @@ public class AnalysisQueryService {
                                 ? List.of()
                                 : lawRefs(refsByClause.getOrDefault(c.getClauseId(), List.of()).stream()
                                         .map(AnalysisClauseRef::getLawArticleId).toList(), articles),
-                        c.getBasisType(),
+                        BasisType.orDefault(c.getBasisType()),
                         relatedByClause.getOrDefault(c.getClauseId(), List.of()).stream()
                                 .map(visible::get)
                                 .filter(Objects::nonNull)

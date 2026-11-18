@@ -2,12 +2,14 @@ package com.team.docai.domain.analysis.service.query;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team.docai.domain.analysis.dto.ClauseDetailInfo;
 import com.team.docai.domain.analysis.dto.SampleAnalysisInfo;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,6 +21,7 @@ import java.util.regex.Pattern;
  *   <li>코드는 대문자·밑줄만 받는다. 경로 조작("../")을 막기 위해서다.</li>
  *   <li>모르는 필드가 있으면 실패한다 (파일 오타가 응답에서 조용히 빠지지 않게).</li>
  *   <li>시각은 파일에 적힌 오프셋(+09:00) 그대로 둔다.</li>
+ *   <li>조항 상세에는 조항 상세 조회와 같은 기본값을 채운다 ({@link ClauseDetailInfo#withDisplayDefaults()}).</li>
  *   <li>읽은 파일만 메모리에 둔다. 없는 코드는 저장하지 않는다 (아무 코드로나 불러 메모리를 채우지 못하게).</li>
  * </ul>
  */
@@ -54,9 +57,19 @@ public class SampleAnalysisReader {
             if (sample.result() == null || !code.equals(sample.result().documentTypeCode())) {
                 throw new IllegalStateException("예시 분석 파일의 문서 종류가 파일 이름과 다릅니다: " + code);
             }
-            return sample;
+            return withDisplayDefaults(sample);
         } catch (IOException e) {
             throw new IllegalStateException("예시 분석 파일을 읽지 못했습니다: " + code, e);
         }
+    }
+
+    /** 조항 상세 조회와 같은 응답 기본값 (easyExplanation ← oneLine, basisType ← AI_INTERPRETATION). 파일 순서는 지킨다 */
+    private static SampleAnalysisInfo withDisplayDefaults(SampleAnalysisInfo sample) {
+        if (sample.clauseDetails() == null) {
+            return sample;
+        }
+        Map<Long, ClauseDetailInfo> details = new LinkedHashMap<>();
+        sample.clauseDetails().forEach((id, d) -> details.put(id, d == null ? null : d.withDisplayDefaults()));
+        return new SampleAnalysisInfo(sample.result(), details);
     }
 }
