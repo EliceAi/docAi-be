@@ -280,7 +280,7 @@ class ExtractMergerTest {
         assertThat(dates).hasSize(1);
         assertThat(dates.get(0)).containsEntry("clauseKey", "c1").containsEntry("date", "2026-12-01");
         assertThat(merged.extraction()).containsEntry("contractDate", "2026-11-20")
-                .containsEntry("promptVersion", "extract-v2")
+                .containsEntry("promptVersion", "extract-v3")
                 .containsEntry("wageOnlyDocument", false);
     }
 
@@ -355,5 +355,35 @@ class ExtractMergerTest {
         // basePay 가 없으면 키도 넣지 않아 기존 모양 {type, amount}
         ExtractResponse plain = response(1, 1, List.of(), List.of(written("임금", "월 250만", null, null, wage("MONTHLY", 2500000))));
         assertThat(merge(chunk(1, 1, 1, plain)).keyTerms().get(5).valueJson()).isEqualTo(Map.of("type", "MONTHLY", "amount", 2500000L));
+    }
+
+    @Test
+    void GPT가_지은_글의_조항_키는_관련_조항으로_바꾸고_계약서_원문과_계약서_값은_바꾸지_않는다() {
+        ExtractResponse.Clause c = new ExtractResponse.Clause("c1", 1, "제1조", "c3 기준", "근로자는 c2 등급 업무를 맡는다.",
+                "c2 조항과 함께 보는 계약기간", "c3 옆", false, false, true, "c2·c3에 적힌 금액을 물어냄", null,
+                List.of(), List.of("위약금"), List.of());
+        ExtractResponse r = withDates(response(1, 1, List.of(c),
+                        List.of(written("업무", "c2 등급 업무", "c1", "근로자는 c2 등급 업무를 맡는다.", null))),
+                null, List.of(new ExtractResponse.DateItem("c1 계약 시작일", "2026-12-01", "c1")));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 1, r));
+
+        ExtractMerger.MergedClause out = merged.clauses().get(0);
+        assertThat(out.oneLine()).isEqualTo("관련 조항과 함께 보는 계약기간");
+        assertThat(out.location()).isEqualTo("관련 조항 옆");
+        assertThat(out.issueSummary()).isEqualTo("관련 조항·관련 조항에 적힌 금액을 물어냄");
+        // 계약서에서 온 값은 그대로
+        assertThat(out.originalText()).isEqualTo("근로자는 c2 등급 업무를 맡는다.");
+        assertThat(out.title()).isEqualTo("c3 기준");
+        assertThat(merged.keyTerms()).filteredOn(t -> t.label().equals("업무"))
+                .extracting(ExtractMerger.MergedKeyTerm::value, ExtractMerger.MergedKeyTerm::evidence)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("c2 등급 업무", "근로자는 c2 등급 업무를 맡는다."));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> dates = (List<Map<String, Object>>) merged.extraction().get("dates");
+        assertThat(dates.get(0).get("label")).isEqualTo("관련 조항 계약 시작일");
+        assertThat(merged.validationLog()).filteredOn(m -> "CLAUSE_KEY_REPLACED".equals(m.get("type")))
+                .extracting(m -> (String) m.get("target"))
+                .contains("clause c1.oneLine", "clause c1.location", "clause c1.issueSummary", "dates.label")
+                .doesNotContain("clause c1.originalText", "clause c1.title");
     }
 }

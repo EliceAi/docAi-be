@@ -2,12 +2,15 @@ package com.team.docai.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team.docai.domain.analysis.client.GptCallException;
 import com.team.docai.domain.analysis.client.GptClient;
 import com.team.docai.domain.analysis.client.GptContentPart;
 import com.team.docai.domain.analysis.client.GptContext;
+import com.team.docai.domain.analysis.client.GptFailureReason;
 import com.team.docai.domain.analysis.client.GptPurpose;
 import com.team.docai.domain.analysis.client.GptRequest;
 import com.team.docai.domain.analysis.dto.ExtractResponse;
+import com.team.docai.domain.analysis.dto.JudgeResponse;
 import com.team.docai.domain.analysis.entity.LawHint;
 import com.team.docai.domain.contract.dto.CreateContractCommand;
 import com.team.docai.domain.contract.service.ContractService;
@@ -52,7 +55,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 분석 1차(ExtractStep)를 실제 DB·B 의 실제 계약서 등록 경로로 돌린다. GPT 만 가짜(@MockitoBean GptClient).
  * <ul>
  *   <li>7쪽 계약서 → 묶음 2개(1~5, 6~7) → 묶음 결과 저장 → 병합(경계 조항 합치기, 키 c1..) → 조항·주요 조건·관련 조항 저장.</li>
- *   <li>지금은 2차(판정) 단계가 없어 JUDGING 조항이 남으므로 분석은 COMPLETED 가 되지 않고 FAILED · TEMPORARY_ERROR 가 정상이다.</li>
+ *   <li>1차만 보려고 2차(JUDGE) 가짜는 실패하게 둔다. 판정 중(JUDGING) 조항이 남으므로 분석은 COMPLETED 가 되지 않고
+ *       FAILED · TEMPORARY_ERROR 가 정상이다. 2차부터 완료까지는 JudgePipelineIntegrationTest 가 본다.</li>
  *   <li>이 테스트가 만든 행과 이미지 파일만 ID 로 지운다. 꼬리표·법령·문서 종류는 읽기만 한다.</li>
  * </ul>
  */
@@ -93,6 +97,8 @@ class ExtractPipelineIntegrationTest {
             assertThat(m.find()).isTrue();
             return answer.get().apply(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)));
         });
+        when(gptClient.call(eq(GptPurpose.JUDGE), any(), eq(JudgeResponse.class), any()))
+                .thenThrow(new GptCallException(GptFailureReason.SERVER_ERROR, "이 테스트는 2차를 보지 않음", 2));
     }
 
     @AfterEach
@@ -274,7 +280,7 @@ class ExtractPipelineIntegrationTest {
         assertThat(saved.get("lbd")).isEqualTo("2026-11-20");
         assertThat(mapper.readTree((String) saved.get("vl")).get("extract").toString()).contains("BOUNDARY_MERGED");
 
-        // 2차(판정) 단계가 아직 없으므로 JUDGING 이 남아 COMPLETED 가 아니라 FAILED · TEMPORARY_ERROR (3단계 규칙)
+        // 2차(판정) 가짜가 실패하므로 JUDGING 이 남아 COMPLETED 가 아니라 FAILED · TEMPORARY_ERROR
         assertThat(row.get("status")).isEqualTo("FAILED");
         assertThat(row.get("fail_reason")).isEqualTo("TEMPORARY_ERROR");
         assertThat(jdbc.queryForObject("select latest_analysis_id from contract_version where version_id = ?",
