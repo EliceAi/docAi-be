@@ -148,4 +148,35 @@ class MinimumWageRuleTest {
         Result r = MinimumWageRule.check(wage("HOURLY", 10000), Map.of("hoursPerWeek", 52), MIN_2026);
         assertThat(r.whyCheck()).contains("주 40시간이면 한 달 약 55,600원");
     }
+
+    @Test
+    void 연봉계약서_실제값_basePay와_계약서_월_기준시간으로_비교해_통과() {
+        // amount 2,916,660 (수당 포함), basePay 2,466,661, monthlyHours 209 → 2,466,661 / 209 = 시급 약 11,802 >= 10,320
+        Map<String, Object> w = wage("MONTHLY", 2916660L);
+        w.put("basePay", 2466661L);
+        assertThat(MinimumWageRule.check(w, Map.of("monthlyHours", 209.0), MIN_2026).outcome()).isEqualTo(Outcome.PASS);
+    }
+
+    @Test
+    void basePay가_있으면_amount_대신_비교하고_비교_라벨에_수당_제외를_적는다() {
+        Map<String, Object> w = wage("MONTHLY", 2500000);
+        w.put("basePay", 2000000);
+        Result r = MinimumWageRule.check(w, null, MIN_2026);
+        assertThat(r.outcome()).isEqualTo(Outcome.SHORTFALL);
+        assertThat(r.comparison().leftLabel()).isEqualTo("계약서 월급 (수당 제외)");
+        assertThat(r.comparison().leftValue()).isEqualTo("2,000,000원");
+    }
+
+    @Test
+    void 계약서의_월_기준시간이_주_시간_계산보다_우선이고_하루_시간만_있어도_계산한다() {
+        // 주 20시간이면 104시간이지만 계약서에 월 209시간이라 적혀 있으면 209로: 10,320 × 209 = 2,156,880
+        Map<String, Object> h = new java.util.HashMap<>(hours(4, 5));
+        h.put("monthlyHours", 209);
+        assertThat(MinimumWageRule.check(wage("MONTHLY", 1500000), h, MIN_2026).outcome()).isEqualTo(Outcome.SHORTFALL);
+        Map<String, Object> dayOnly = new java.util.HashMap<>(hours(4, null));
+        dayOnly.put("monthlyHours", 104.3);
+        assertThat(MinimumWageRule.check(wage("MONTHLY", 1100000), dayOnly, MIN_2026).outcome()).isEqualTo(Outcome.PASS);
+        assertThat(MinimumWageRule.check(wage("ANNUAL", 25882560), Map.of("monthlyHours", 209), MIN_2026).outcome())
+                .isEqualTo(Outcome.PASS);
+    }
 }

@@ -71,4 +71,20 @@ class RequiredItemsTest {
     void 필수_목록이_없는_문서_종류는_빈_결과() {
         assertThat(RequiredItems.findMissing("LEASE", List.of(new KeyTermFact("보증금", KeyTermState.MISSING)))).isEmpty();
     }
+
+    @Test
+    void 임금만_정한_문서는_빠진_항목_대신_근로계약서와_함께_확인_안내_1건() {
+        List<KeyTermFact> facts = List.of(new KeyTermFact("임금", KeyTermState.OK),
+                new KeyTermFact("휴일", KeyTermState.MISSING), new KeyTermFact("연차휴가", KeyTermState.MISSING),
+                new KeyTermFact("근로시간", KeyTermState.MISSING));
+
+        List<Item> items = RequiredItems.findMissing("EMPLOYMENT", facts, true);
+
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).name()).isEqualTo(RequiredItems.WAGE_ONLY_NAME);
+        assertThat(items.get(0).description()).contains("근로시간·휴일·연차휴가", "근로계약서");
+        assertThat(items.get(0).description().length()).isLessThanOrEqualTo(300);
+        assertThat(RequiredItems.findMissing("EMPLOYMENT", facts, false)).hasSize(3);
+        assertThat(RequiredItems.findMissing("EMPLOYMENT", RequiredItemsTest.answer01(), true)).isEmpty();
+    }
 }

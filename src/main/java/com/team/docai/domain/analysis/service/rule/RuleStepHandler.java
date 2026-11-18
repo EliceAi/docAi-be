@@ -85,7 +85,7 @@ public class RuleStepHandler implements AnalysisStepHandler {
             checkMinimumWage(ctx.analysisId(), keyTerms, baseDate);
         }
         saveMissingItems(ctx.analysisId(), documentType, keyTerms, baseDate,
-                wageOnlyDocument(analysis.getExtractionJson()));
+                wageOnlyDocument(objectMapper, analysis.getExtractionJson()));
     }
 
     void checkMinimumWage(Long analysisId, List<AnalysisKeyTerm> keyTerms, LocalDate baseDate) {
@@ -161,7 +161,7 @@ public class RuleStepHandler implements AnalysisStepHandler {
      * extraction_json 최상위 "wageOnlyDocument" (임금만 정한 별도 문서). 없거나 읽을 수 없으면 false.
      * 위치는 5단계 출력에 맞춰 바뀔 수 있다.
      */
-    boolean wageOnlyDocument(String extractionJson) {
+    static boolean wageOnlyDocument(ObjectMapper objectMapper, String extractionJson) {
         if (extractionJson == null || extractionJson.isBlank()) {
             return false;
         }

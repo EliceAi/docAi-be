@@ -345,7 +345,11 @@ class ExtractMergerTest {
         merged.keyTerms().forEach(t -> byLabel.put(t.label(), t));
         assertThat(byLabel.get("임금").valueJson())
                 .isEqualTo(Map.of("type", "MONTHLY", "amount", 3000000L, "basePay", 2400000L));
-        assertThat(byLabel.get("근로시간").valueJson()).isEqualTo(Map.of("monthlyHours", 209.0));
+        Map<String, Object> hours = new java.util.LinkedHashMap<>();
+        hours.put("hoursPerDay", null);
+        hours.put("daysPerWeek", null);
+        hours.put("monthlyHours", 209.0);
+        assertThat(byLabel.get("근로시간").valueJson()).isEqualTo(hours);
         assertThat(byLabel.get("근로시간").state()).isEqualTo(KeyTermState.OK);
         assertThat(merged.extraction()).containsEntry("wageOnlyDocument", true);
         // basePay 가 없으면 키도 넣지 않아 기존 모양 {type, amount}
