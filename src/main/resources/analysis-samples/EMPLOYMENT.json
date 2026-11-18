@@ -1,0 +1,371 @@
+{
+  "result": {
+    "title": "웹 디자이너 근로계약서 · 예시",
+    "documentTypeCode": "EMPLOYMENT",
+    "checkLevel": "A",
+    "analyzedAt": "2026-11-20T10:00:00+09:00",
+    "coverage": {
+      "pageCount": 2,
+      "readPages": [
+        1,
+        2
+      ],
+      "partialPages": [],
+      "maskedCount": 0
+    },
+    "keyTerms": [
+      {
+        "label": "계약기간",
+        "value": "2026.12.01부터 기간 정함 없음",
+        "state": "OK",
+        "source": "WRITTEN"
+      },
+      {
+        "label": "근무장소",
+        "value": "서울특별시 마포구 예시로 12, 다온빌딩 3층",
+        "state": "OK",
+        "source": "WRITTEN"
+      },
+      {
+        "label": "업무",
+        "value": "웹 서비스 화면 디자인 및 유지보수",
+        "state": "OK",
+        "source": "WRITTEN"
+      },
+      {
+        "label": "근로시간",
+        "value": "09:00~18:00, 휴게 1시간, 주 40시간",
+        "state": "OK",
+        "source": "WRITTEN"
+      },
+      {
+        "label": "휴일",
+        "value": "주휴일 일요일(유급)",
+        "state": "OK",
+        "source": "WRITTEN"
+      },
+      {
+        "label": "임금",
+        "value": "월 2,500,000원",
+        "state": "OK",
+        "source": "WRITTEN"
+      },
+      {
+        "label": "임금 지급일",
+        "value": "매월 25일, 계좌 입금",
+        "state": "OK",
+        "source": "WRITTEN"
+      },
+      {
+        "label": "연차휴가",
+        "value": "근로기준법 제60조에 따름",
+        "state": "OK",
+        "source": "WRITTEN"
+      }
+    ],
+    "counts": {
+      "needsCheck": 0,
+      "missing": 0,
+      "deadline": 0,
+      "totalClauses": 11
+    },
+    "priorityClauses": [],
+    "missingItems": [],
+    "deadlines": [],
+    "clauses": [
+      {
+        "clauseId": 1,
+        "articleNo": "제1조",
+        "title": "근로계약기간",
+        "verdict": "OK",
+        "pageNo": 1
+      },
+      {
+        "clauseId": 2,
+        "articleNo": "제2조",
+        "title": "근무장소",
+        "verdict": "OK",
+        "pageNo": 1
+      },
+      {
+        "clauseId": 3,
+        "articleNo": "제3조",
+        "title": "업무의 내용",
+        "verdict": "OK",
+        "pageNo": 1
+      },
+      {
+        "clauseId": 4,
+        "articleNo": "제4조",
+        "title": "소정근로시간",
+        "verdict": "OK",
+        "pageNo": 1
+      },
+      {
+        "clauseId": 5,
+        "articleNo": "제5조",
+        "title": "근무일 및 휴일",
+        "verdict": "OK",
+        "pageNo": 1
+      },
+      {
+        "clauseId": 6,
+        "articleNo": "제6조",
+        "title": "임금",
+        "verdict": "OK",
+        "pageNo": 1
+      },
+      {
+        "clauseId": 7,
+        "articleNo": "제7조",
+        "title": "연차유급휴가",
+        "verdict": "OK",
+        "pageNo": 2
+      },
+      {
+        "clauseId": 8,
+        "articleNo": "제8조",
+        "title": "사회보험 적용",
+        "verdict": "OK",
+        "pageNo": 2
+      },
+      {
+        "clauseId": 9,
+        "articleNo": "제9조",
+        "title": "근로계약서 교부",
+        "verdict": "OK",
+        "pageNo": 2
+      },
+      {
+        "clauseId": 10,
+        "articleNo": "제10조",
+        "title": "해고",
+        "verdict": "OK",
+        "pageNo": 2
+      },
+      {
+        "clauseId": 11,
+        "articleNo": "제11조",
+        "title": "기타",
+        "verdict": "OK",
+        "pageNo": 2
+      }
+    ],
+    "questionsBeforeSigning": [],
+    "limitations": [],
+    "foundDateCount": 2,
+    "similarContract": null,
+    "disclaimer": "법률 자문이 아니에요. 애매하면 고용노동부 1350 · 대한법률구조공단 132에 물어보세요."
+  },
+  "clauseDetails": {
+    "1": {
+      "clauseId": 1,
+      "articleNo": "제1조",
+      "title": "근로계약기간",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "근로계약기간은 2026년 12월 1일부터 기간의 정함이 없는 것으로 한다.",
+        "pageNo": 1,
+        "location": "1쪽 제1조"
+      },
+      "easyExplanation": "2026년 12월 1일부터 일을 시작하고, 끝나는 날을 정하지 않은 계약이에요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "2026년 12월 1일부터 기간 정함 없이 일함"
+    },
+    "2": {
+      "clauseId": 2,
+      "articleNo": "제2조",
+      "title": "근무장소",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "서울특별시 마포구 예시로 12, 다온빌딩 3층 사업주 사무실",
+        "pageNo": 1,
+        "location": "1쪽 제2조"
+      },
+      "easyExplanation": "일하는 곳은 회사 사무실이에요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "회사 사무실에서 근무"
+    },
+    "3": {
+      "clauseId": 3,
+      "articleNo": "제3조",
+      "title": "업무의 내용",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "웹 서비스 화면 디자인 및 유지보수",
+        "pageNo": 1,
+        "location": "1쪽 제3조"
+      },
+      "easyExplanation": "맡을 일은 웹 서비스 화면 디자인과 유지보수예요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "웹 화면 디자인과 유지보수"
+    },
+    "4": {
+      "clauseId": 4,
+      "articleNo": "제4조",
+      "title": "소정근로시간",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "근로시간은 09시 00분부터 18시 00분까지로 한다.\n휴게시간은 12시 00분부터 13시 00분까지(1시간)로 한다.\n1일 소정근로시간은 8시간, 1주 소정근로시간은 40시간으로 한다.",
+        "pageNo": 1,
+        "location": "1쪽 제4조"
+      },
+      "easyExplanation": "9시부터 18시까지 일하고 점심 1시간은 쉬어요. 하루 8시간, 일주일 40시간이에요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "하루 8시간, 주 40시간, 휴게 1시간"
+    },
+    "5": {
+      "clauseId": 5,
+      "articleNo": "제5조",
+      "title": "근무일 및 휴일",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "근무일은 매주 월요일부터 금요일까지 주 5일로 한다.\n주휴일은 매주 일요일로 하며 유급으로 한다. 토요일은 무급휴무일로 한다.\n근로자의 날과 관공서의 공휴일에 관한 규정에 따른 공휴일은 유급휴일로 한다.",
+        "pageNo": 1,
+        "location": "1쪽 제5조"
+      },
+      "easyExplanation": "월요일부터 금요일까지 일하고, 일요일은 돈을 받고 쉬는 날이에요. 공휴일도 유급으로 쉬어요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "주 5일 근무, 일요일 유급 주휴일"
+    },
+    "6": {
+      "clauseId": 6,
+      "articleNo": "제6조",
+      "title": "임금",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "월 기본급: 2,500,000원 (주휴수당 포함, 월 소정근로시간 209시간 기준)\n식대: 월 200,000원\n연장·야간·휴일근로를 한 경우 근로기준법 제56조에 따라 통상임금의 100분의 50 이상을 가산하여 지급한다.\n임금지급일: 매월 25일 (휴일인 경우 그 전날 지급)\n지급방법: 근로자 명의 예금통장에 입금",
+        "pageNo": 1,
+        "location": "1쪽 제6조"
+      },
+      "easyExplanation": "기본급은 한 달 250만 원이고 식대 20만 원이 따로 있어요. 매월 25일에 본인 통장으로 들어와요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "월 250만 원, 매월 25일 계좌 입금"
+    },
+    "7": {
+      "clauseId": 7,
+      "articleNo": "제7조",
+      "title": "연차유급휴가",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "연차유급휴가는 근로기준법 제60조에서 정하는 바에 따라 부여한다.",
+        "pageNo": 2,
+        "location": "2쪽 제7조"
+      },
+      "easyExplanation": "연차휴가는 법에서 정한 만큼 받아요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "연차휴가는 근로기준법에 따름"
+    },
+    "8": {
+      "clauseId": 8,
+      "articleNo": "제8조",
+      "title": "사회보험 적용",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "고용보험, 산재보험, 국민연금, 건강보험에 가입한다.",
+        "pageNo": 2,
+        "location": "2쪽 제8조"
+      },
+      "easyExplanation": "고용보험, 산재보험, 국민연금, 건강보험에 모두 가입해요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "4대 보험 가입"
+    },
+    "9": {
+      "clauseId": 9,
+      "articleNo": "제9조",
+      "title": "근로계약서 교부",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "사업주는 근로계약을 체결함과 동시에 본 계약서를 사본하여 근로자에게 교부한다.",
+        "pageNo": 2,
+        "location": "2쪽 제9조"
+      },
+      "easyExplanation": "계약하면서 계약서 사본을 받아요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "계약서 사본을 근로자에게 줌"
+    },
+    "10": {
+      "clauseId": 10,
+      "articleNo": "제10조",
+      "title": "해고",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "사업주가 근로자를 해고하는 경우 근로기준법 제23조부터 제27조까지의 규정에 따른다.",
+        "pageNo": 2,
+        "location": "2쪽 제10조"
+      },
+      "easyExplanation": "해고할 때는 근로기준법에 정한 절차를 따라야 해요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "해고는 근로기준법 절차에 따름"
+    },
+    "11": {
+      "clauseId": 11,
+      "articleNo": "제11조",
+      "title": "기타",
+      "verdict": "OK",
+      "issueSummary": null,
+      "original": {
+        "text": "이 계약에 정하지 않은 사항은 근로기준법 등 노동관계법령에 따른다.",
+        "pageNo": 2,
+        "location": "2쪽 제11조"
+      },
+      "easyExplanation": "계약서에 없는 내용은 노동 관련 법을 따라요.",
+      "whyCheck": null,
+      "laws": [],
+      "basisType": null,
+      "relatedClauses": [],
+      "askCounterpart": [],
+      "oneLine": "정하지 않은 것은 노동관계법령에 따름"
+    }
+  }
+}

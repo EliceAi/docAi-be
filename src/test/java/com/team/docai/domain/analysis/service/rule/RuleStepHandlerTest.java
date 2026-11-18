@@ -24,4 +24,14 @@ class RuleStepHandlerTest {
         assertThat(RuleStepHandler.hoursJson(List.of(term("소정 근로시간", Map.of("hoursPerDay", 4), KeyTermState.OK))))
                 .containsEntry("hoursPerDay", 4);
     }
+
+    @Test
+    void extraction_json_최상위_wageOnlyDocument를_읽고_없거나_깨지면_false() {
+        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(RuleStepHandler.wageOnlyDocument(om, "{\"wageOnlyDocument\": true}")).isTrue();
+        assertThat(RuleStepHandler.wageOnlyDocument(om, "{\"wageOnlyDocument\": false}")).isFalse();
+        assertThat(RuleStepHandler.wageOnlyDocument(om, "{\"clauses\": []}")).isFalse();
+        assertThat(RuleStepHandler.wageOnlyDocument(om, null)).isFalse();
+        assertThat(RuleStepHandler.wageOnlyDocument(om, "{깨짐")).isFalse();
+    }
 }
