@@ -5,6 +5,7 @@ import com.team.docai.domain.analysis.dto.ClauseDetailInfo;
 import com.team.docai.domain.analysis.entity.Analysis;
 import com.team.docai.domain.analysis.entity.AnalysisClause;
 import com.team.docai.domain.analysis.entity.AnalysisStatus;
+import com.team.docai.domain.analysis.entity.BasisType;
 import com.team.docai.domain.analysis.entity.ClauseVerdict;
 import com.team.docai.domain.analysis.repository.AnalysisChunkRepository;
 import com.team.docai.domain.analysis.repository.AnalysisClauseRefRepository;
@@ -122,6 +123,72 @@ class AnalysisQueryServiceTest {
 
         assertThat(info.issueSummary()).isEqualTo("요약 2");
         assertThat(info.whyCheck()).isEqualTo("이유 2");
+    }
+
+    @Test
+    void 조항_상세에서_2차_판단을_거치지_않은_OK_조항은_쉬운_설명을_한_줄_요약으로_basisType을_AI_INTERPRETATION으로_채운다() {
+        AnalysisClause ok = okWithoutJudgment(3L, "한 줄 요약 3");
+        when(reader.findVisibleClause(ANALYSIS_ID, 3L)).thenReturn(Optional.of(ok));
+
+        ClauseDetailInfo info = service.getClause(USER, ANALYSIS_ID, 3L);
+
+        assertThat(info.verdict()).isEqualTo(ClauseVerdict.OK);
+        assertThat(info.easyExplanation()).isEqualTo("한 줄 요약 3");
+        assertThat(info.oneLine()).isEqualTo("한 줄 요약 3");
+        assertThat(info.basisType()).isEqualTo(BasisType.AI_INTERPRETATION);
+        assertThat(info.issueSummary()).isNull();
+        assertThat(info.whyCheck()).isNull();
+    }
+
+    @Test
+    void 조항_상세에서_OK_조항의_한_줄_요약도_없으면_쉬운_설명은_null이고_basisType은_채운다() {
+        AnalysisClause ok = okWithoutJudgment(4L, null);
+        when(reader.findVisibleClause(ANALYSIS_ID, 4L)).thenReturn(Optional.of(ok));
+
+        ClauseDetailInfo info = service.getClause(USER, ANALYSIS_ID, 4L);
+
+        assertThat(info.easyExplanation()).isNull();
+        assertThat(info.oneLine()).isNull();
+        assertThat(info.basisType()).isEqualTo(BasisType.AI_INTERPRETATION);
+    }
+
+    @Test
+    void 조항_상세에서_저장된_쉬운_설명과_basisType은_그대로_쓴다() {
+        AnalysisClause needsCheck = clause(5L, ClauseVerdict.NEEDS_CHECK, 1);
+        when(needsCheck.getOneLine()).thenReturn("한 줄 요약 5");
+        when(needsCheck.getBasisType()).thenReturn(BasisType.RULE);
+        when(reader.findVisibleClause(ANALYSIS_ID, 5L)).thenReturn(Optional.of(needsCheck));
+
+        ClauseDetailInfo info = service.getClause(USER, ANALYSIS_ID, 5L);
+
+        assertThat(info.easyExplanation()).isEqualTo("쉬운 설명 5");
+        assertThat(info.basisType()).isEqualTo(BasisType.RULE);
+    }
+
+    @Test
+    void 결과_조회의_priorityClauses_basisType이_비어_있으면_AI_INTERPRETATION() {
+        AnalysisClause noBasis = clause(6L, ClauseVerdict.NEEDS_CHECK, 1);
+        AnalysisClause rule = clause(7L, ClauseVerdict.NEEDS_CHECK, 2);
+        when(rule.getBasisType()).thenReturn(BasisType.RULE);
+        when(clauseRepository.findByAnalysisIdAndExcludedFalseAndVerdictNotOrderByPageNoAscClauseIdAsc(
+                ANALYSIS_ID, ClauseVerdict.JUDGING)).thenReturn(List.of(noBasis, rule));
+
+        List<AnalysisResultInfo.PriorityClause> priority =
+                service.getResult(USER, ANALYSIS_ID).result().priorityClauses();
+
+        assertThat(priority).extracting(AnalysisResultInfo.PriorityClause::basisType)
+                .containsExactly(BasisType.AI_INTERPRETATION, BasisType.RULE);
+    }
+
+    /** 의심 표시 없이 9단계에서 OK 가 된 조항: easy_explanation·basis_type·why_check·issue_summary 가 비어 있다 */
+    private static AnalysisClause okWithoutJudgment(long id, String oneLine) {
+        AnalysisClause c = mock(AnalysisClause.class);
+        when(c.getClauseId()).thenReturn(id);
+        when(c.getVerdict()).thenReturn(ClauseVerdict.OK);
+        when(c.getPageNo()).thenReturn(1);
+        when(c.getOriginalText()).thenReturn("원문 " + id);
+        when(c.getOneLine()).thenReturn(oneLine);
+        return c;
     }
 
     private static AnalysisClause clause(long id, ClauseVerdict verdict, int priority) {

@@ -1,6 +1,7 @@
 package com.team.docai.domain.analysis.service.query;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team.docai.domain.analysis.entity.BasisType;
 import com.team.docai.domain.analysis.entity.ClauseVerdict;
 import com.team.docai.domain.analysis.dto.AnalysisResultInfo;
 import com.team.docai.domain.analysis.dto.ClauseDetailInfo;
@@ -61,6 +62,14 @@ class SampleAnalysisReaderTest {
                 assertThat(d.issueSummary()).isNull();
             }
         }
+    }
+
+    @Test
+    void 조항_상세의_빈_basisType은_AI_INTERPRETATION으로_채운다() {
+        SampleAnalysisInfo sample = reader.find("EMPLOYMENT").orElseThrow();
+
+        assertThat(sample.clauseDetails().values())
+                .allSatisfy(d -> assertThat(d.basisType()).isEqualTo(BasisType.AI_INTERPRETATION));
     }
 
     @Test

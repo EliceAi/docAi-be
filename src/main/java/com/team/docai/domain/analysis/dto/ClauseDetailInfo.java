@@ -28,6 +28,20 @@ public record ClauseDetailInfo(
         String oneLine
 ) {
 
+    /**
+     * 응답 기본값을 채운 사본. 2차 판단을 거치지 않은 조항(의심 표시 없던 OK 등)은 easy_explanation·basis_type 이 비어 있다.
+     * <ul>
+     *   <li>easyExplanation 이 null 이면 1차 한 줄 요약(oneLine). oneLine 도 없으면 null</li>
+     *   <li>basisType 이 null 이면 AI_INTERPRETATION ({@link BasisType#orDefault})</li>
+     * </ul>
+     * 저장된 데이터는 바꾸지 않는다. 그 밖의 필드(UNCERTAIN 에서 숨기는 issueSummary·whyCheck·laws 포함)는 그대로 둔다.
+     */
+    public ClauseDetailInfo withDisplayDefaults() {
+        return new ClauseDetailInfo(clauseId, articleNo, title, verdict, issueSummary, original,
+                easyExplanation != null ? easyExplanation : oneLine,
+                whyCheck, laws, BasisType.orDefault(basisType), relatedClauses, askCounterpart, oneLine);
+    }
+
     /** text 는 UNREADABLE 이면 null */
     public record Original(String text, Integer pageNo, String location) {
     }

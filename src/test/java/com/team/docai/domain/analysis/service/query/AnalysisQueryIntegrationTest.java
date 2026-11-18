@@ -14,8 +14,10 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
@@ -401,6 +403,30 @@ class AnalysisQueryIntegrationTest {
     }
 
     @Test
+    void 판단을_거치지_않은_OK_조항은_쉬운_설명을_한_줄_요약으로_basisType을_AI_INTERPRETATION으로_채우고_저장값은_그대로() throws Exception {
+        get(owner, "/api/analyses/" + done + "/clauses/" + k1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.verdict").value("OK"))
+                .andExpect(jsonPath("$.data.easyExplanation").value("제1조 한 줄"))
+                .andExpect(jsonPath("$.data.oneLine").value("제1조 한 줄"))
+                .andExpect(jsonPath("$.data.basisType").value("AI_INTERPRETATION"));
+
+        // 한 줄 요약도 없으면 쉬운 설명은 null
+        jdbc.update("update analysis_clause set one_line = null where clause_id = ?", k1);
+        get(owner, "/api/analyses/" + done + "/clauses/" + k1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.easyExplanation").value(nullValue()))
+                .andExpect(jsonPath("$.data.oneLine").value(nullValue()))
+                .andExpect(jsonPath("$.data.basisType").value("AI_INTERPRETATION"));
+
+        // 조회만 채우고 DB 행은 바꾸지 않는다
+        Map<String, Object> row = jdbc.queryForMap(
+                "select easy_explanation, basis_type from analysis_clause where clause_id = ?", k1);
+        assertThat(row.get("easy_explanation")).isNull();
+        assertThat(row.get("basis_type")).isNull();
+    }
+
+    @Test
     void 읽지_못한_조항은_원문이_null() throws Exception {
         get(owner, "/api/analyses/" + done + "/clauses/" + k5)
                 .andExpect(status().isOk())
@@ -455,7 +481,9 @@ class AnalysisQueryIntegrationTest {
                 .andExpect(jsonPath("$.data.result.analyzedAt").value("2026-11-20T10:00:00+09:00"))
                 .andExpect(jsonPath("$.data.result.clauses", hasSize(11)))
                 .andExpect(jsonPath("$.data.clauseDetails['1'].articleNo").value("제1조"))
-                .andExpect(jsonPath("$.data.clauseDetails['11'].title").value("기타"));
+                .andExpect(jsonPath("$.data.clauseDetails['11'].title").value("기타"))
+                .andExpect(jsonPath("$.data.clauseDetails['1'].basisType").value("AI_INTERPRETATION"))
+                .andExpect(jsonPath("$.data.clauseDetails['1'].easyExplanation").isNotEmpty());
     }
 
     @Test
