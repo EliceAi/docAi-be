@@ -15,4 +15,7 @@ public interface AnalysisClauseRepository extends JpaRepository<AnalysisClause, 
     /** 조회용 조항 목록: 제외된 조항과 notVerdict(판정 중)를 뺀다. 쪽 순서, 같은 쪽은 저장 순서 */
     List<AnalysisClause> findByAnalysisIdAndExcludedFalseAndVerdictNotOrderByPageNoAscClauseIdAsc(
             Long analysisId, ClauseVerdict notVerdict);
+
+    /** 분석의 모든 조항 (제외·판정 중 포함). 쪽 순서, 같은 쪽은 저장 순서. 2차 판단 단계가 쓴다 */
+    List<AnalysisClause> findByAnalysisIdOrderByPageNoAscClauseIdAsc(Long analysisId);
 }

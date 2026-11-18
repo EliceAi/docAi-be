@@ -6,9 +6,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
- * 분석 1차(묶음별 GPT 호출) 전용 스레드 풀. 분석 파이프라인 풀(analysisExecutor)과 따로 두어,
- * 동시에 도는 분석이 여럿이어도 OpenAI 로 나가는 1차 호출 수가 concurrency 를 넘지 않게 한다.
- * 파이프라인 스레드는 여기에 묶음을 넣고 모두 끝날 때까지 기다린다 (같은 풀이면 서로 기다리다 막힐 수 있음).
+ * 분석 GPT 호출(1차 묶음 EXTRACT, 2차 JUDGE·JUDGE_MORE) 1차·2차 공용 스레드 풀. 분석 파이프라인 풀(analysisExecutor)과 따로 두어,
+ * 동시에 도는 분석이 여럿이어도 OpenAI 로 나가는 분석 호출 수가 concurrency 를 넘지 않게 한다.
+ * 파이프라인 스레드는 여기에 호출을 넣고 끝날 때까지 기다린다 (같은 풀이면 서로 기다리다 막힐 수 있음).
+ * 여기서 도는 작업은 이 풀에 다른 작업을 넣지 않는다.
  */
 @Configuration
 @EnableConfigurationProperties(ExtractProperties.class)

@@ -95,4 +95,23 @@ public class AnalysisKeyTerm {
                 .sortOrder(sortOrder)
                 .build();
     }
+
+    /** 미인식 항목 입력을 받을 수 있는 칸인가: 읽지 못한 칸(UNREADABLE)만. 가린 칸(MASKED)·빠진 칸·읽은 칸은 아니다 */
+    public boolean isManuallyEnterable() {
+        return state == KeyTermState.UNREADABLE;
+    }
+
+    /**
+     * 미인식 항목 입력. 사용자가 직접 넣은 값으로 바꾸고 출처를 MANUAL 로 둔다.
+     * state 는 UNREADABLE 그대로 둔다 (확인된 값처럼 보이지 않게). 계산용 값(value_json)은 비워
+     * AI 가 읽은 값처럼 숫자 규칙에 쓰이지 않게 한다. 조항 판정은 다시 계산하지 않는다.
+     */
+    public void enterManually(String manualValue) {
+        if (!isManuallyEnterable()) {
+            throw new IllegalStateException("읽지 못한 칸만 직접 입력할 수 있다: " + state);
+        }
+        this.value = manualValue;
+        this.valueJson = null;
+        this.source = KeyTermSource.MANUAL;
+    }
 }

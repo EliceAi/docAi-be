@@ -138,4 +138,11 @@ class ExtractPromptTest {
             }
         }
     }
+
+    @Test
+    void 직접_쓰는_글_칸에_clauseKey를_쓰지_말라고_하고_버전은_extract_v3() {
+        org.assertj.core.api.Assertions.assertThat(ExtractPrompt.systemPrompt("EMPLOYMENT", java.util.List.of()))
+                .contains("clauseKey(c1, c2 같은 키)를 쓰지 않는다", "조 번호(예: \"제5조\")");
+        org.assertj.core.api.Assertions.assertThat(ExtractPrompt.VERSION).isEqualTo("extract-v3");
+    }
 }

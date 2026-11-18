@@ -31,6 +31,8 @@ public enum ErrorCode {
     CLAUSE_NOT_FOUND(404, "해당 분석에 없는 조항입니다."),
     ANALYSIS_NOT_COMPLETED(409, "분석이 끝나지 않았거나 실패한 분석입니다."),
     SAMPLE_NOT_FOUND(404, "예시가 없는 문서 종류입니다."),
+    TERM_NOT_FOUND(404, "없는 항목입니다."),
+    TERM_NOT_EDITABLE(409, "읽지 못한 칸이 아니라서 입력할 수 없습니다."),
 
     // Law
 

@@ -25,7 +25,7 @@ import java.util.Map;
 final class ExtractPrompt {
 
     /** 이 지시문·스키마 버전. docai.analysis.prompt-version 의 1차 부분과 같게 둔다 */
-    static final String VERSION = "extract-v2";
+    static final String VERSION = "extract-v3";
     static final String SCHEMA_NAME = "contract_extract";
 
     static final List<String> READ_STATES = List.of("READ", "PARTIAL", "UNREADABLE");
@@ -54,6 +54,8 @@ final class ExtractPrompt {
                   회사 이름·근무 장소처럼 개인이 아닌 정보는 그대로 둔다.
                 - 네가 직접 쓰는 칸(oneLine, location, issueSummary)은 짧은 한국어로 쓰고 "무효", "불법", "위반이다",
                   "서명해도 된다" 같은 단정 표현을 쓰지 않는다.
+                - 네가 직접 쓰는 글 칸(oneLine, location, issueSummary, dates 의 label)에는 clauseKey(c1, c2 같은 키)를 쓰지 않는다.
+                  다른 조항은 조 번호(예: "제5조")나 제목(예: "임금 조항")으로 부른다. clauseKey 는 clauseKey·relatedClauseKeys 칸에만 쓴다.
 
                 [문서 종류 확인 typeCheck]
                 - 사용자가 고른 종류와 같은 종류의 문서면 matchesSelected = true, detectedTypeName = null.

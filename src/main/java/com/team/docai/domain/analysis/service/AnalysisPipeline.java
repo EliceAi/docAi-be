@@ -3,6 +3,7 @@ package com.team.docai.domain.analysis.service;
 import com.team.docai.domain.analysis.client.GptCallException;
 import com.team.docai.domain.analysis.dto.AnalysisRunContext;
 import com.team.docai.domain.analysis.entity.AnalysisFailReason;
+import com.team.docai.domain.contract.service.ContractService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -17,6 +18,8 @@ import java.util.List;
  *   <li>실행 중 목록에 넣는다 (heartbeat 스케줄러가 15초마다 갱신. 보통은 Launcher 가 대기열에 넣기 전에 이미 넣어 둠)</li>
  *   <li>단계({@link AnalysisStepHandler})를 {@code @Order} 순서로 하나씩: 시작 때 진행 단계 저장, 분석이 이미 끝났으면 멈춤</li>
  *   <li>모두 끝나면 조건부 COMPLETED. JUDGING 조항이 남아 바뀌지 않으면 FAILED · TEMPORARY_ERROR</li>
+ *   <li>COMPLETED 로 바뀌었으면(완료 트랜잭션이 끝난 뒤) 계약서 이름(B4 setTitleIfEmpty, 분석이 정한 이름).
+ *       완료 트랜잭션 안에서 부르면 분석 → 계약서 순서로 잠가 데드락이 날 수 있어 따로 부른다. 실패해도 분석 결과는 그대로, 로그만</li>
  *   <li>단계 예외: AnalysisFailedException 은 그 사유로, GptCallException·그 밖의 예외는 TEMPORARY_ERROR 로 FAILED</li>
  * </ol>
  * 임시: 단계 빈이 하나도 없으면(지금 운영 상태) "분석 단계 미구현"으로 FAILED · TEMPORARY_ERROR 처리한다.
@@ -30,6 +33,7 @@ public class AnalysisPipeline {
     private final ObjectProvider<AnalysisStepHandler> stepProvider;
     private final AnalysisWriter analysisWriter;
     private final RunningAnalysisRegistry registry;
+    private final ContractService contractService;
 
     public void run(AnalysisRunContext ctx) {
         Long analysisId = ctx.analysisId();
@@ -65,11 +69,26 @@ public class AnalysisPipeline {
             }
             step.execute(ctx);
         }
-        if (!analysisWriter.complete(ctx)) {
+        if (analysisWriter.complete(ctx)) {
+            setTitleQuietly(ctx);
+        } else {
             // 이미 FAILED 로 바뀌었거나, 판정 중(JUDGING) 조항이 남아 완료할 수 없음. 앞의 경우는 아래 fail 이 0행
             if (analysisWriter.fail(ctx, AnalysisFailReason.TEMPORARY_ERROR, null, null)) {
                 log.warn("판정 중 조항이 남아 완료하지 못하고 실패 처리함: analysisId={}", ctx.analysisId());
             }
+        }
+    }
+
+    /** 완료 뒤 계약서 이름 (B4). 이름이 이미 있으면 B 가 덮어쓰지 않는다. 실패해도 완료된 분석에는 영향 없음 */
+    private void setTitleQuietly(AnalysisRunContext ctx) {
+        try {
+            String title = analysisWriter.title(ctx.analysisId());
+            if (title != null) {
+                contractService.setTitleIfEmpty(ctx.contractId(), title);
+            }
+        } catch (RuntimeException e) {
+            log.warn("완료 뒤 계약서 이름 저장 실패 (분석 결과는 그대로): analysisId={}, error={}", ctx.analysisId(),
+                    e.toString());
         }
     }
 

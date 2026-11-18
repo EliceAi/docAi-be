@@ -322,7 +322,7 @@ class AnalysisRequestIntegrationTest {
         Map<String, Object> row = analysisRow(analysisId);
         assertThat(row.get("status")).isEqualTo("ANALYZING");
         assertThat(row.get("document_type_code")).isEqualTo(TYPE);
-        assertThat(row.get("prompt_version")).isEqualTo("extract-v2");
+        assertThat(row.get("prompt_version")).isEqualTo("extract-v3/judge-v1");
         assertThat(row.get("started_at")).isNotNull();
         assertThat(row.get("heartbeat_at")).isNotNull();
         assertThat(row.get("completed_at")).isNull();

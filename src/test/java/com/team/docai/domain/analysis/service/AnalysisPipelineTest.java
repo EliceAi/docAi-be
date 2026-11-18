@@ -5,6 +5,7 @@ import com.team.docai.domain.analysis.client.GptFailureReason;
 import com.team.docai.domain.analysis.dto.AnalysisRunContext;
 import com.team.docai.domain.analysis.entity.AnalysisFailReason;
 import com.team.docai.domain.analysis.entity.AnalysisStep;
+import com.team.docai.domain.contract.service.ContractService;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.ObjectProvider;
@@ -29,6 +30,7 @@ class AnalysisPipelineTest {
 
     AnalysisWriter writer = mock(AnalysisWriter.class);
     RunningAnalysisRegistry registry = new RunningAnalysisRegistry();
+    ContractService contractService = mock(ContractService.class);
     List<String> calls = new ArrayList<>();
     /** 단계 안에서 본 실행 중 목록 (heartbeat 대상인지) */
     List<Boolean> runningDuringStep = new ArrayList<>();
@@ -48,7 +50,7 @@ class AnalysisPipelineTest {
     AnalysisPipeline pipeline(AnalysisStepHandler... steps) {
         ObjectProvider<AnalysisStepHandler> provider = mock(ObjectProvider.class);
         when(provider.orderedStream()).thenAnswer(inv -> List.of(steps).stream());
-        return new AnalysisPipeline(provider, writer, registry);
+        return new AnalysisPipeline(provider, writer, registry, contractService);
     }
 
     @Test
@@ -68,6 +70,43 @@ class AnalysisPipelineTest {
         order.verify(writer).complete(CTX);
         verify(writer, never()).fail(any(), any(), any(), any());
         assertThat(registry.snapshot()).isEmpty();
+    }
+
+    @Test
+    void 완료된_뒤에_분석이_정한_이름으로_계약서_이름을_넣는다() {
+        when(writer.advance(anyLong(), any())).thenReturn(true);
+        when(writer.complete(CTX)).thenReturn(true);
+        when(writer.title(88L)).thenReturn("카페 알바 근로계약서");
+
+        pipeline(step("read", AnalysisStep.READING_TEXT)).run(CTX);
+
+        InOrder order = inOrder(writer, contractService);
+        order.verify(writer).complete(CTX);
+        order.verify(contractService).setTitleIfEmpty(12L, "카페 알바 근로계약서");
+    }
+
+    @Test
+    void 이름_저장이_실패해도_완료된_분석을_실패로_바꾸지_않는다() {
+        when(writer.advance(anyLong(), any())).thenReturn(true);
+        when(writer.complete(CTX)).thenReturn(true);
+        when(writer.title(88L)).thenReturn("이름");
+        org.mockito.Mockito.doThrow(new IllegalStateException("잠금 실패")).when(contractService)
+                .setTitleIfEmpty(anyLong(), any());
+
+        pipeline(step("read", AnalysisStep.READING_TEXT)).run(CTX);
+
+        verify(writer, never()).fail(any(), any(), any(), any());
+        assertThat(registry.snapshot()).isEmpty();
+    }
+
+    @Test
+    void 완료되지_않으면_계약서_이름을_넣지_않는다() {
+        when(writer.advance(anyLong(), any())).thenReturn(true);
+        when(writer.complete(CTX)).thenReturn(false);
+
+        pipeline(step("read", AnalysisStep.READING_TEXT)).run(CTX);
+
+        verify(contractService, never()).setTitleIfEmpty(anyLong(), any());
     }
 
     @Test
