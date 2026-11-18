@@ -9,4 +9,6 @@ import java.util.List;
 public interface AnalysisClauseRelationRepository extends JpaRepository<AnalysisClauseRelation, AnalysisClauseRelationId> {
 
     List<AnalysisClauseRelation> findByClauseId(Long clauseId);
+
+    List<AnalysisClauseRelation> findByAnalysisId(Long analysisId);
 }

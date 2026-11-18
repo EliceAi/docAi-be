@@ -10,7 +10,7 @@ import java.util.Map;
  * 계약기간 {start, end}, 금액 항목 {amount}. 나머지 항목은 value_json 없음.
  * 선택 칸(값이 있을 때만 넣음): 임금 basePay(최저임금 비교 금액), 근로시간 monthlyHours(월 기준시간). 6단계와 약속한 이름.
  */
-final class ExtractCatalog {
+public final class ExtractCatalog {
 
     /** @param valueKeys value_json 에 남길 칸 (ExtractResponse.ValueJson 필드 이름). 비면 value_json 없음 */
     record Term(String label, List<String> valueKeys, String hint) {
@@ -51,7 +51,7 @@ final class ExtractCatalog {
     private ExtractCatalog() {
     }
 
-    static String documentTypeName(String documentTypeCode) {
+    public static String documentTypeName(String documentTypeCode) {
         return NAMES.getOrDefault(documentTypeCode, documentTypeCode);
     }
 

@@ -142,4 +142,13 @@ public class Analysis {
         this.lawBaseDate = lawBaseDate;
         this.validationLogJson = validationLogJson;
     }
+
+    /**
+     * 7·8단계(2차 판단·검증) 결과 기록: 서명 전에 물어볼 것, 검증 기록(앞 단계 기록에 이어 붙인 전체).
+     * 상태는 바꾸지 않는다. 같은 트랜잭션에서 조건부 UPDATE(advance)로 분석 중인지 확인한 뒤 부른다.
+     */
+    public void recordJudgment(List<String> questions, String validationLogJson) {
+        this.questionsJson = questions == null ? null : List.copyOf(questions);
+        this.validationLogJson = validationLogJson;
+    }
 }

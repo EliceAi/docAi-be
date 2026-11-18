@@ -5,7 +5,10 @@ import com.team.docai.domain.analysis.entity.Analysis;
 import com.team.docai.domain.analysis.entity.AnalysisFailReason;
 import com.team.docai.domain.analysis.entity.AnalysisStatus;
 import com.team.docai.domain.analysis.entity.AnalysisStep;
+import com.team.docai.domain.analysis.entity.ClauseVerdict;
+import com.team.docai.domain.analysis.repository.AnalysisClauseRepository;
 import com.team.docai.domain.analysis.repository.AnalysisRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.domain.notification.service.NotificationService;
 import com.team.docai.global.util.TextTruncator;
@@ -35,10 +38,15 @@ public class AnalysisWriter {
     static final String ANALYSIS_FAILED = "ANALYSIS_FAILED";
     static final String DONE_TITLE = "분석이 끝났어요";
     static final String FAILED_TITLE = "분석하지 못했어요";
+    /** notification.sub_title 칸 길이 */
+    static final int SUB_TITLE_MAX_LENGTH = 100;
+    static final List<ClauseVerdict> NEEDS_CHECK_VERDICTS = List.of(ClauseVerdict.NEEDS_CHECK, ClauseVerdict.UNCERTAIN);
 
     private final AnalysisRepository analysisRepository;
     private final ContractService contractService;
     private final NotificationService notificationService;
+    private final AnalysisClauseRepository clauseRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * 단계 시작: 진행 단계와 heartbeat 를 저장한다.
@@ -60,9 +68,13 @@ public class AnalysisWriter {
      * 계약서 쪽 트랜잭션(종류 변경·재업로드·보관)은 분석 중이면 409 로 끝나 분석 행을 잠그지 않으므로 서로 반대 순서로
      * 기다리는 일이 없다. 이 메서드에 계약서 행을 잠그는 호출을 더하지 않는다.
      * <p>
-     * 계약서 이름(B4 {@code ContractService.setTitleIfEmpty})은 이 메서드 안에서 markCompleted 뒤에 부르지 않는다.
+     * 완료 알림 부제 (알림 목록 명세 예시 형식, 2026-11-18 사용자 결정): 확인 필요(제외되지 않은 NEEDS_CHECK + UNCERTAIN 조항 수)가
+     * 1 이상이면 "{계약서 이름} · 확인 필요 N", 0 이면 "{계약서 이름} · 확인할 조항 없음". 이름은 이 분석이 정한 이름
+     * ({@link AnalysisTitle}: 1차 문서 제목, 없으면 문서 종류 이름)이고 B 테이블은 읽지 않는다.
+     * <p>
+     * 계약서 이름(B4 {@code ContractService.setTitleIfEmpty})은 이 메서드 안에서 부르지 않는다.
      * B4 는 contract 행을 FOR UPDATE 로 잠그므로 분석 → 계약서 순서가 되어, 계약서 → 분석 순서로 잠그는 분석 요청과
-     * 데드락이 날 수 있다. 이름은 완료 전 별도 트랜잭션에서 넣거나(계약서 잠금만 잡고 끝남), 완료 트랜잭션이 끝난 뒤에 부른다.
+     * 데드락이 날 수 있다. 파이프라인이 이 메서드가 true 를 돌려준 뒤(완료 트랜잭션이 끝난 뒤) 따로 부른다.
      *
      * @return 바뀌었으면 true
      */
@@ -73,9 +85,32 @@ public class AnalysisWriter {
             return false;
         }
         contractService.linkLatestAnalysis(ctx.versionId(), ctx.analysisId());
+        long needsCheck = clauseRepository.countByAnalysisIdAndExcludedFalseAndVerdictIn(ctx.analysisId(),
+                NEEDS_CHECK_VERDICTS);
         notificationService.createAnalysisResult(ctx.userId(), ctx.analysisId(), ANALYSIS_DONE,
-                DONE_TITLE, null);
+                DONE_TITLE, doneSubTitle(title(ctx.analysisId()), needsCheck));
         return true;
+    }
+
+    /** 이 분석이 정한 계약서 이름 ({@link AnalysisTitle}). 분석이 없으면 null */
+    public String title(Long analysisId) {
+        return analysisRepository.findById(analysisId)
+                .map(a -> AnalysisTitle.resolve(objectMapper, a.getExtractionJson(), a.getDocumentTypeCode()))
+                .orElse(null);
+    }
+
+    /**
+     * "{계약서 이름} · 확인 필요 N" (0 이면 "{계약서 이름} · 확인할 조항 없음"). 칸(100자)을 넘으면 이름을 줄인다.
+     * 이름이 없으면 뒷부분만.
+     */
+    static String doneSubTitle(String contractTitle, long needsCheck) {
+        String count = needsCheck > 0 ? "확인 필요 " + needsCheck : "확인할 조항 없음";
+        if (contractTitle == null || contractTitle.isBlank()) {
+            return count;
+        }
+        String suffix = " · " + count;
+        int room = SUB_TITLE_MAX_LENGTH - suffix.codePointCount(0, suffix.length());
+        return TextTruncator.truncate(contractTitle.trim(), Math.max(0, room)) + suffix;
     }
 
     /**

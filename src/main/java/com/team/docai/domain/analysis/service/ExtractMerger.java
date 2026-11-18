@@ -36,11 +36,16 @@ import java.util.TreeSet;
  *       계약서에서 온 값은 자르지 않는다: 주요 조건 value 200자 초과 → 저장 안 함 + NEEDS_CHECK, 조항 title·articleNo 초과 → null,
  *       evidence 300자 초과 → null. original_text 는 TEXT 라 그대로. 모두 validation_log 에 남긴다 (원문 글은 남기지 않음).</li>
  *   <li>꼬리표: 목록에 없는 값은 null + 기록.</li>
+ *   <li>내부 키: GPT 가 지은 글(oneLine, location, issueSummary, 날짜 이름)에 든 조항 키(c3 등)는 "관련 조항"으로 바꾼다.
+ *       키를 c1 부터 다시 매기므로 글 속 키는 다른 조항을 가리킬 수 있어 이름으로 바꾸지 않는다. 계약서 원문(originalText)과
+ *       계약서에서 온 값(title, articleNo, 주요 조건 value·evidence)은 바꾸지 않는다. 바꾼 것은 기록한다.</li>
  * </ol>
  */
 final class ExtractMerger {
 
     static final String STAGE = "EXTRACT";
+    /** GPT 가 지은 글 속 조항 키를 바꿀 말 */
+    static final String RELATED_CLAUSE = "관련 조항";
 
     record ChunkResult(int chunkNo, int pageFrom, int pageTo, ExtractResponse response) {
     }
@@ -218,7 +223,8 @@ final class ExtractMerger {
                     log.add(entry("DATE_INVALID", "dates", "chunk " + chunk.chunkNo()));
                     continue;
                 }
-                String label = written(item.label(), ExtractPrompt.DATE_LABEL_MAX, "dates.label", log);
+                String label = written(withoutKeys(item.label(), "dates.label", log), ExtractPrompt.DATE_LABEL_MAX,
+                        "dates.label", log);
                 if (!seenDates.add(label + "|" + date)) {
                     continue;
                 }
@@ -466,8 +472,11 @@ final class ExtractMerger {
             String articleNo = fromDocument(normalizeArticleNo(first.articleNo()), AnalysisClause.ARTICLE_NO_MAX_LENGTH,
                     target + ".articleNo", log);
             String title = fromDocument(first.title(), AnalysisClause.TITLE_MAX_LENGTH, target + ".title", log);
-            String oneLine = written(first.oneLine(), AnalysisClause.ONE_LINE_MAX_LENGTH, target + ".oneLine", log);
-            String location = written(first.location(), AnalysisClause.LOCATION_MAX_LENGTH, target + ".location", log);
+            String oneLine = written(withoutKeys(first.oneLine(), target + ".oneLine", log),
+                    AnalysisClause.ONE_LINE_MAX_LENGTH, target + ".oneLine", log);
+            String location = written(withoutKeys(first.location(), target + ".location", log),
+                    AnalysisClause.LOCATION_MAX_LENGTH, target + ".location", log);
+            String summary = withoutKeys(issueSummary, target + ".issueSummary", log);
             String tag = issueTag;
             if (tag != null && !allowedTags.contains(tag)) {
                 log.add(entry("TAG_DROPPED", target + ".issueTag",
@@ -475,7 +484,7 @@ final class ExtractMerger {
                 tag = null;
             }
             return new MergedClause(newKey, articleNo, title, originalText, oneLine, pageNo, location, issueFound,
-                    issueSummary, tag, List.copyOf(lawHints), List.copyOf(keywords));
+                    summary, tag, List.copyOf(lawHints), List.copyOf(keywords));
         }
     }
 
@@ -496,6 +505,12 @@ final class ExtractMerger {
             return evidence;
         }
         return evidence + " (" + TextTruncator.truncate(note, left) + ")";
+    }
+
+    /** GPT 가 지은 글 속 조항 키 → "관련 조항" (기록). 계약서에서 온 글에는 쓰지 않는다 */
+    static String withoutKeys(String value, String target, List<Map<String, Object>> log) {
+        return ClauseKeyText.replace(value, k -> RELATED_CLAUSE,
+                (found, replaced) -> log.add(entry("CLAUSE_KEY_REPLACED", target, found + " → " + replaced)));
     }
 
     /** 계약서에서 온 글: 자르지 않고 넘으면 null + 기록 */

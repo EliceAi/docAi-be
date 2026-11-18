@@ -55,8 +55,8 @@ docai:
     token-secret: ${DOCAI_TOKEN_SECRET:}
   analysis:
     # analysis.prompt_version 에 저장 (50자 이하). 1차 지시문·스키마 버전(ExtractPrompt.VERSION)과 같게 둔다.
-    # 7단계(2차)를 만들면 "/judge-v1" 처럼 붙인다
-    prompt-version: extract-v2
+    # 2차 지시문·스키마 버전(JudgePrompt.VERSION)을 "/" 뒤에 붙인다
+    prompt-version: extract-v3/judge-v1
     # 쪽 묶음 크기 (아키텍처 2단계)
     pages-per-chunk: 5
     # 사용자별 1분 동안 분석 요청 수. 넘으면 429 RATE_LIMITED (명세에 숫자 없음, 팀 확인 필요)
@@ -71,7 +71,7 @@ docai:
     # 분석 전용 스케줄러 스레드 수 (앱의 다른 @Scheduled 와 나누지 않음, 2 이상)
     scheduler-threads: 2
     extract:
-      # 1차(사진 → 조항) 묶음 호출을 서버 전체에서 동시에 몇 개까지 (분석 전용 executor-threads 와 따로 셈)
+      # 분석 GPT 호출(1차 묶음, 2차 JUDGE·JUDGE_MORE 공용)을 서버 전체에서 동시에 몇 개까지 (분석 전용 executor-threads 와 따로 셈)
       concurrency: 3
       queue-capacity: 200
     scheduler:
