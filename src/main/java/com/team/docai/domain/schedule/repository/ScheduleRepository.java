@@ -7,6 +7,7 @@ import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.*;
 public interface ScheduleRepository extends JpaRepository<Schedule,Long> {
+ long countByUserIdAndContractId(UUID userId,Long contractId);
  List<Schedule> findByUserIdAndDateGreaterThanEqualOrderByDateAscScheduleIdAsc(UUID userId,LocalDate date,Pageable pageable);
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select s from Schedule s where s.scheduleId=:id and s.userId=:user")

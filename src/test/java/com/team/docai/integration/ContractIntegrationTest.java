@@ -96,9 +96,24 @@ class ContractIntegrationTest {
   var pool=Executors.newSingleThreadExecutor();var entered=new CountDownLatch(1);
   try{new TransactionTemplate(manager).execute(s->{service.lockForUpdate(id);var future=pool.submit(()->new TransactionTemplate(manager).execute(s2->{jdbc.execute("SET LOCAL lock_timeout='200ms'");entered.countDown();service.lockForUpdate(id);return null;}));try{assertTrue(entered.await(2,TimeUnit.SECONDS));assertThrows(ExecutionException.class,()->future.get(3,TimeUnit.SECONDS));}catch(InterruptedException e){throw new RuntimeException(e);}return null;});}finally{pool.shutdownNow();}
  }
- @Test void storageRejectsPathTraversalAndStubsDoNotWrite() {
+ @Test void storageRejectsPathTraversalAndAnalysisNotificationIsIdempotent() throws Exception {
   assertThrows(BusinessException.class,()->storage.read("../.env"));assertEquals(List.of(),service.findArchivedSameType(user,"EMPLOYMENT",1L));
-  notifications.createAnalysisResult(user,1L,"ANALYSIS_DONE","title","subtitle");assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM notification WHERE user_id=?",Integer.class,user));
+  long id=service.create(user,UUID.randomUUID(),command()).contractId();long version=service.getForAnalysis(user,id).versionId();
+  Long analysis=jdbc.queryForObject("INSERT INTO analysis(version_id,document_type_code,status,progress_step,prompt_version,started_at,completed_at) VALUES (?,'EMPLOYMENT','COMPLETED','DONE','test',now(),now()) RETURNING analysis_id",Long.class,version);
+  for(int i=0;i<2;i++)notifications.createAnalysisResult(user,analysis,"ANALYSIS_DONE","title","subtitle");
+  assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM notification WHERE analysis_id=? AND type='ANALYSIS_DONE'",Integer.class,analysis));
+ }
+
+ @Test void concurrentAnalysisNotificationCreatesOneRowAndRollbackRemovesIt() throws Exception {
+  long id=service.create(user,UUID.randomUUID(),command()).contractId();long version=service.getForAnalysis(user,id).versionId();
+  Long analysis=jdbc.queryForObject("INSERT INTO analysis(version_id,document_type_code,status,progress_step,prompt_version,started_at,completed_at) VALUES (?,'EMPLOYMENT','COMPLETED','DONE','test',now(),now()) RETURNING analysis_id",Long.class,version);
+  var pool=Executors.newFixedThreadPool(3);
+  try{var tasks=java.util.stream.IntStream.range(0,3).mapToObj(n->(Callable<Void>)()->{notifications.createAnalysisResult(user,analysis,"ANALYSIS_DONE","완료",null);return null;}).toList();
+   for(var f:pool.invokeAll(tasks,10,TimeUnit.SECONDS))f.get();
+  }finally{pool.shutdownNow();}
+  assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM notification WHERE analysis_id=?",Integer.class,analysis));
+  assertThrows(IllegalStateException.class,()->new TransactionTemplate(manager).execute(tx->{notifications.createAnalysisResult(user,analysis,"ANALYSIS_FAILED","실패",null);throw new IllegalStateException("rollback");}));
+  assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM notification WHERE analysis_id=? AND type='ANALYSIS_FAILED'",Integer.class,analysis));
  }
 
  @Test void missingRequiredPagesReturnsInvalidInput() throws Exception {
