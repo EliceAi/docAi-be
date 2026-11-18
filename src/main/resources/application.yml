@@ -24,16 +24,26 @@ anthropic:
 
 openai:
   api-key: ${OPENAI_API_KEY:}
-  model: ${OPENAI_MODEL:gpt-4o-2024-08-06}
+  # 2026-11-18 사용자 결정: gpt-5.5. OPENAI_MODEL 로 바꿀 수 있다 (gpt-4o 등 추론 모델이 아니면 reasoning_effort 를 보내지 않음)
+  model: ${OPENAI_MODEL:gpt-5.5}
   base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
   connect-timeout: 10s
-  read-timeout: 120s
+  # gpt-5.5 1차(이미지 5쪽, 조항 원문 전부)는 추론 포함 1~2분 걸릴 수 있다
+  read-timeout: 180s
   # 첫 시도 제외 재시도 횟수. 통신 오류(429, 5xx, 시간 초과, 네트워크 오류)만 1회 (담당_연결지점 A8, 2026-11-16 결정)
   max-retries: 1
   initial-backoff: 1s
   max-backoff: 10s
   # Retry-After 가 이보다 길면 기다리지 않고 실패
   max-retry-after: 30s
+  # 목적별 추론 강도(reasoning_effort: none/low/medium/high/xhigh)와 출력 한도(max_completion_tokens, 추론 토큰 포함).
+  # 추론 모델(gpt-5 계열)에만 보낸다. GptRequest 에 값을 넣으면 그 값이 우선
+  purposes:
+    extract: { reasoning-effort: low, max-completion-tokens: 32000 }
+    judge: { reasoning-effort: medium, max-completion-tokens: 16000 }
+    judge-more: { reasoning-effort: medium, max-completion-tokens: 8000 }
+    compare: { reasoning-effort: low, max-completion-tokens: 8000 }
+    chat: { reasoning-effort: low, max-completion-tokens: 6000 }
 
 law-api:
   key: ${LAW_API_KEY:}
@@ -44,8 +54,9 @@ docai:
   auth:
     token-secret: ${DOCAI_TOKEN_SECRET:}
   analysis:
-    # analysis.prompt_version 에 저장 (50자 이하). 5~7단계에서 프롬프트를 만들면 그 버전으로 바꾼다
-    prompt-version: extract-v1/judge-v1
+    # analysis.prompt_version 에 저장 (50자 이하). 1차 지시문·스키마 버전(ExtractPrompt.VERSION)과 같게 둔다.
+    # 7단계(2차)를 만들면 "/judge-v1" 처럼 붙인다
+    prompt-version: extract-v2
     # 쪽 묶음 크기 (아키텍처 2단계)
     pages-per-chunk: 5
     # 사용자별 1분 동안 분석 요청 수. 넘으면 429 RATE_LIMITED (명세에 숫자 없음, 팀 확인 필요)
@@ -59,6 +70,10 @@ docai:
     stale-check-interval: 30s
     # 분석 전용 스케줄러 스레드 수 (앱의 다른 @Scheduled 와 나누지 않음, 2 이상)
     scheduler-threads: 2
+    extract:
+      # 1차(사진 → 조항) 묶음 호출을 서버 전체에서 동시에 몇 개까지 (분석 전용 executor-threads 와 따로 셈)
+      concurrency: 3
+      queue-capacity: 200
     scheduler:
       # false 면 분석 스케줄(heartbeat, 멈춘 분석 정리)만 끈다. 다른 @Scheduled 는 영향 없음
       enabled: true

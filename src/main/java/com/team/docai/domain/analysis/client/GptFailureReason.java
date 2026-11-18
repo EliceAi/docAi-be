@@ -6,7 +6,8 @@ import com.team.docai.global.error.ErrorCode;
  * GPT 호출 실패 사유. retryable 은 GptClient 가 스스로 재시도하는 사유 (429, 5xx, 시간 초과, 네트워크 오류).
  * 아키텍처 '중간에 끝나는 경우': "GPT 오류·시간 초과 → 재시도 후 FAILED · TEMPORARY_ERROR".
  * 분석 파이프라인은 어떤 사유든 분석 실패 사유 TEMPORARY_ERROR 로 이어 쓴다 (분석 실패 사유는 3가지뿐).
- * 응답 JSON 이 깨지거나 스키마와 다르면 다시 부르지 않는다 (아키텍처: 구조화 출력 → 파싱 실패 재호출 없음).
+ * 응답 내용 오류(깨진 JSON, 스키마 불일치, 출력 잘림 LENGTH)는 GptClient 가 다시 부르지 않는다. 다시 부를지는 부르는 쪽이
+ * 정한다 (담당_연결지점 A8. 예: 분석 1차 ExtractStep 은 그 묶음만 1회 다시 부름).
  */
 public enum GptFailureReason {
     /** 연결·읽기 시간 초과 */

@@ -20,7 +20,8 @@ import java.util.List;
 /**
  * 분석 조항 (analysis_clause). 4단계(묶음 병합)에 verdict = JUDGING 으로 저장하고, 7단계 판정·9단계 OK 채우기로 바뀐다.
  * verdict·excluded 는 DB 기본값이 있지만 JPA 는 NULL 을 보내므로 create() 에서 직접 채운다.
- * GPT 가 채우는 VARCHAR 칸은 저장 전에 *_MAX_LENGTH 로 잘라서 넣는다 (자른 기록은 analysis.validation_log_json).
+ * 길이 (ExtractMerger): GPT 가 지은 칸(one_line, location, headline)은 *_MAX_LENGTH 로 잘라 넣고, 계약서에서 온 칸
+ * (title, article_no)은 자르지 않고 넘으면 null 로 넣는다. original_text 는 TEXT. 기록은 analysis.validation_log_json.
  */
 @Entity
 @Table(name = "analysis_clause")

@@ -93,14 +93,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       UNIQUE 위반 재현 테스트만 잠금을 끄고(doNothing) 두 요청이 조회 뒤 함께 출발하게 한다.
  *       스파이는 트랜잭션 프록시 안쪽에 있으므로 stub·verify 는 프록시를 벗긴 대상(AopTestUtils)에 한다
  *       (프록시로 verify 하면 MANDATORY 메서드가 트랜잭션 없음 예외를 던진다).</li>
- *   <li>실제 분석 단계가 아직 없어 가짜 단계 하나(멈춤·예외·통과)를 꽂는다.</li>
+ *   <li>실행 뼈대만 보려고 실제 1차 단계(ExtractStep)는 끄고(docai.analysis.extract.enabled=false, GPT 를 부르지 않음)
+ *       가짜 단계 하나(멈춤·예외·통과)를 꽂는다. 1차 단계는 ExtractPipelineIntegrationTest 가 본다.</li>
  *   <li>스케줄러는 테스트 설정(config/application.yml)으로 꺼져 있다. 같은 DB 의 다른 행을 바꾸지 않도록
  *       멈춘 분석 정리는 이 테스트가 만든 분석 ID 로만 부른다.</li>
  *   <li>이 테스트가 만든 행(users, idempotency_record, contract, contract_version, contract_page, analysis, analysis_chunk,
  *       notification)과 이미지 파일만 ID 로 지운다. document_type 등 운영 데이터는 읽기만 한다.</li>
  * </ul>
  */
-@SpringBootTest
+@SpringBootTest(properties = "docai.analysis.extract.enabled=false")
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "DOCAI_INTEGRATION_TESTS", matches = "true")
 class AnalysisRequestIntegrationTest {
@@ -306,6 +307,7 @@ class AnalysisRequestIntegrationTest {
     @Test
     void 요청하면_202이고_분석과_쪽_묶음을_저장하며_최신_분석은_바꾸지_않는다() throws Exception {
         long[] c = newContract(userId, 7, false);
+        org.mockito.Mockito.clearInvocations(contractSpy);
 
         mvc.perform(post("/api/contracts/{id}/analyses", c[0]).header("Authorization", "Bearer " + tokenService.issue(userId)))
                 .andExpect(status().isAccepted())
@@ -320,7 +322,7 @@ class AnalysisRequestIntegrationTest {
         Map<String, Object> row = analysisRow(analysisId);
         assertThat(row.get("status")).isEqualTo("ANALYZING");
         assertThat(row.get("document_type_code")).isEqualTo(TYPE);
-        assertThat(row.get("prompt_version")).isEqualTo("extract-v1/judge-v1");
+        assertThat(row.get("prompt_version")).isEqualTo("extract-v2");
         assertThat(row.get("started_at")).isNotNull();
         assertThat(row.get("heartbeat_at")).isNotNull();
         assertThat(row.get("completed_at")).isNull();
@@ -328,8 +330,9 @@ class AnalysisRequestIntegrationTest {
                 + " where analysis_id = ? order by chunk_no", String.class, analysisId))
                 .containsExactly("1-5:PENDING", "6-7:PENDING");
         assertThat(latestAnalysisId(c[1])).isNull();
-        // B 의 잠금(MANDATORY)이 조회보다 먼저, 같은 요청 트랜잭션 안에서 불렸다
+        // 소유권 확인 → B 의 잠금(MANDATORY, 같은 요청 트랜잭션) → 잠근 뒤 다시 조회
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(contractSpy);
+        order.verify(contractSpy).getForAnalysis(userId, c[0]);
         order.verify(contractSpy).lockForUpdate(c[0]);
         order.verify(contractSpy).getForAnalysis(userId, c[0]);
         awaitEntered(analysisId);
@@ -383,10 +386,12 @@ class AnalysisRequestIntegrationTest {
         // 계약서 잠금을 끄고, 두 요청이 B 의 실제 조회를 마친 뒤 함께 출발하게 한다
         doNothing().when(contractSpy).lockForUpdate(anyLong());
         CyclicBarrier barrier = new CyclicBarrier(2);
-        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        // 요청마다 getForAnalysis 를 두 번 부른다 (소유권 확인, 잠근 뒤 다시 조회). 두 번째 조회 뒤에 함께 출발시킨다
+        ThreadLocal<Integer> callsInThread = ThreadLocal.withInitial(() -> 0);
         doAnswer(inv -> {
             Object result = inv.callRealMethod();
-            if (calls.incrementAndGet() <= 2) {
+            callsInThread.set(callsInThread.get() + 1);
+            if (callsInThread.get() == 2) {
                 try {
                     barrier.await(10, TimeUnit.SECONDS);
                 } catch (BrokenBarrierException | TimeoutException e) {
@@ -586,5 +591,62 @@ class AnalysisRequestIntegrationTest {
         verify(pipeline, never()).run(argThat(ctx -> ctx.analysisId().equals(analysisId)));
         verify(notificationSpy).createAnalysisResult(eq(userId), eq(analysisId), eq("ANALYSIS_FAILED"), any(), any());
         assertThat(latestAnalysisId(c[1])).isNull();
+    }
+
+    @Test
+    void 분석_중에_계약서가_삭제되면_완료가_롤백되고_FAILED와_실패_알림이며_최신_분석은_연결되지_않는다() throws Exception {
+        long[] c = newContract(userId, 1, false);
+        long analysisId = postAnalysis(userId, c[0]);
+        awaitEntered(analysisId);
+
+        // 단계가 GPT 를 기다리는 동안 계약서가 삭제됨 (B 의 정리 배치·폐기와 같은 상태)
+        jdbc.update("update contract set deleted_at = now() where contract_id = ?", c[0]);
+        fakeStep.mode = Mode.PASS;
+        fakeStep.release.countDown();
+
+        // COMPLETED 전환 → B3 linkLatestAnalysis 가 CONTRACT_NOT_FOUND → 같은 트랜잭션 롤백 → 파이프라인이 FAILED
+        awaitStatus(analysisId, "FAILED");
+        Map<String, Object> row = analysisRow(analysisId);
+        assertThat(row.get("fail_reason")).isEqualTo("TEMPORARY_ERROR");
+        assertThat(row.get("completed_at")).isNotNull();
+        assertThat(latestAnalysisId(c[1])).isNull();
+        verify(contractSpy).linkLatestAnalysis(c[1], analysisId);
+        verify(notificationSpy, never()).createAnalysisResult(any(), eq(analysisId), eq("ANALYSIS_DONE"), any(), any());
+        verify(notificationSpy).createAnalysisResult(eq(userId), eq(analysisId), eq("ANALYSIS_FAILED"), any(), any());
+    }
+
+    @Test
+    void 토큰이_없거나_잘못되면_401이고_분석을_만들지_않는다() throws Exception {
+        long[] c = newContract(userId, 1, false);
+
+        mvc.perform(post("/api/contracts/{id}/analyses", c[0]))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        mvc.perform(post("/api/contracts/{id}/analyses", c[0]).header("Authorization", "Bearer not-a-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        assertThat(jdbc.queryForObject("select count(*) from analysis where version_id = ?", Long.class, c[1])).isZero();
+    }
+
+    @Test
+    void 한_사용자가_1분에_설정_횟수를_넘게_요청하면_429_RATE_LIMITED() throws Exception {
+        UUID user = newUser();
+        long[] c = newContract(user, 1, false);
+        int limit = context.getBean(com.team.docai.global.config.AnalysisProperties.class).requestsPerMinute();
+        String token = "Bearer " + tokenService.issue(user);
+
+        for (int i = 0; i < limit; i++) {
+            mvc.perform(post("/api/contracts/{id}/analyses", c[0]).header("Authorization", token))
+                    .andExpect(status().isAccepted());
+        }
+        mvc.perform(post("/api/contracts/{id}/analyses", c[0]).header("Authorization", token))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.status").value(429))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+
+        // 넘친 요청은 분석을 더 만들지 않는다 (분석 중 재요청은 같은 분석을 돌려줌)
+        assertThat(countAnalyzing(c[1])).isEqualTo(1);
     }
 }

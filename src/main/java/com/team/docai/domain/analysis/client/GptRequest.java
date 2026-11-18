@@ -13,7 +13,8 @@ import java.util.regex.Pattern;
  * @param schemaName      json_schema.name (영문·숫자·_·- 64자 이하)
  * @param schema          json_schema.schema (strict 모드 규칙을 따라야 함)
  * @param maxOutputTokens max_completion_tokens (null 이면 보내지 않음)
- * @param temperature     temperature (null 이면 보내지 않음)
+ * @param temperature     temperature (null 이면 보내지 않음). 추론 모델(gpt-5 계열)이면 값이 있어도 보내지 않는다
+ * @param reasoningEffort reasoning_effort (null 이면 목적별 설정값). 추론 모델일 때만 보낸다
  */
 public record GptRequest(
         String systemPrompt,
@@ -21,7 +22,8 @@ public record GptRequest(
         String schemaName,
         Map<String, Object> schema,
         Integer maxOutputTokens,
-        Double temperature
+        Double temperature,
+        ReasoningEffort reasoningEffort
 ) {
     private static final Pattern SCHEMA_NAME = Pattern.compile("^[a-zA-Z0-9_-]{1,64}$");
 
@@ -39,6 +41,11 @@ public record GptRequest(
 
     public static GptRequest of(String systemPrompt, List<GptContentPart> userContent,
                                 String schemaName, Map<String, Object> schema) {
-        return new GptRequest(systemPrompt, userContent, schemaName, schema, null, null);
+        return new GptRequest(systemPrompt, userContent, schemaName, schema, null, null, null);
+    }
+
+    /** 출력 토큰 한도와 추론 강도를 바꾼 사본 (null 이면 목적별 설정값) */
+    public GptRequest with(Integer maxOutputTokens, ReasoningEffort reasoningEffort) {
+        return new GptRequest(systemPrompt, userContent, schemaName, schema, maxOutputTokens, temperature, reasoningEffort);
     }
 }

@@ -77,7 +77,7 @@ class AnalysisRequestWriterTest {
     }
 
     @Test
-    void 잠금_다음_조회_다음_생성_그리고_이벤트() {
+    void 소유권_확인_다음_잠금_다음_다시_조회_다음_생성_그리고_이벤트() {
         when(contractService.getForAnalysis(USER, CONTRACT_ID)).thenReturn(contract(false, 12));
         when(analysisRepository.findByVersionIdAndStatus(VERSION_ID, AnalysisStatus.ANALYZING)).thenReturn(Optional.empty());
         givenSavedAnalysisGetsId(88L);
@@ -87,6 +87,7 @@ class AnalysisRequestWriterTest {
         assertThat(info).isEqualTo(new AnalysisRequestInfo(88L, CONTRACT_ID, AnalysisStatus.ANALYZING,
                 AnalysisStep.READING_TEXT, 0, 3));
         InOrder order = inOrder(contractService, analysisRepository, chunkRepository, publisher);
+        order.verify(contractService).getForAnalysis(USER, CONTRACT_ID);
         order.verify(contractService).lockForUpdate(CONTRACT_ID);
         order.verify(contractService).getForAnalysis(USER, CONTRACT_ID);
         order.verify(analysisRepository).findByVersionIdAndStatus(VERSION_ID, AnalysisStatus.ANALYZING);
@@ -142,6 +143,8 @@ class AnalysisRequestWriterTest {
 
         assertThatThrownBy(() -> writer.createOrGetRunning(USER, CONTRACT_ID))
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode()).isEqualTo(ErrorCode.CONTRACT_NOT_FOUND));
+        // 남의 계약서 행은 잠그지 않는다
+        verify(contractService, never()).lockForUpdate(any());
         verify(analysisRepository, never()).saveAndFlush(any());
     }
 
