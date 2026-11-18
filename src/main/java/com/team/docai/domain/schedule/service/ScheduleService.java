@@ -15,6 +15,7 @@ public class ScheduleService {
  private final ScheduleRepository schedules;
  private final ContractService contracts;
  private final Clock clock;
+ public int countForContract(UUID userId,Long contractId){return Math.toIntExact(schedules.countByUserIdAndContractId(userId,contractId));}
  public List<UpcomingScheduleInfo> upcoming(UUID userId,int limit){
   if(limit<1||limit>10)throw new BusinessException(ErrorCode.INVALID_INPUT);
   var today=LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")));

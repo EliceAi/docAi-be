@@ -20,6 +20,20 @@ import java.nio.charset.StandardCharsets;
 public class ContractService {
  private final ContractRepository contracts;private final ContractVersionRepository versions;private final ContractPageRepository pages;
  private final DocumentTypeService types;private final FileStorage storage;private final JdbcTemplate jdbc;private final ObjectMapper mapper;
+ private final org.springframework.beans.factory.ObjectProvider<com.team.docai.domain.schedule.service.ScheduleService> scheduleService;
+ public ContractVersionInfo getVersionOwner(UUID userId,Long versionId){
+  if(userId==null||versionId==null)throw new BusinessException(ErrorCode.CONTRACT_NOT_FOUND);
+  var version=versions.findById(versionId).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+  var contract=contracts.findByContractIdAndUserIdAndDeletedAtIsNull(version.getContractId(),userId).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+  var items=pages.findByVersionIdOrderByPageNoAsc(versionId);
+  return new ContractVersionInfo(contract.getContractId(),version.getVersionNo(),items.size(),contract.getTitle(),items.stream().mapToInt(ContractPage::getMaskedCount).sum());
+ }
+ public Optional<SimilarContractInfo> getSimilarContractInfo(UUID userId,Long contractId){
+  if(userId==null||contractId==null)return Optional.empty();
+  return contracts.findByContractIdAndUserIdAndDeletedAtIsNull(contractId,userId).filter(Contract::isArchived)
+   .map(c->new SimilarContractInfo(c.getContractId(),c.getTitle(),null,scheduleService.getObject().countForContract(userId,contractId)));
+  // analyzedAt은 분석 담당의 완료 시각 조회 메서드가 연결될 때 채운다.
+ }
  public byte[] readPage(UUID userId,Long contractId,int pageNo,Integer versionNo){
   var contract=contracts.findByContractIdAndUserIdAndDeletedAtIsNull(contractId,userId).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
   var version=versions.findByContractIdAndVersionNo(contractId,versionNo==null?contract.getCurrentVersionNo():versionNo).orElseThrow(()->new BusinessException(ErrorCode.VERSION_NOT_FOUND));

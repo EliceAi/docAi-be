@@ -17,7 +17,7 @@ class ContractPageReadTest {
  final ContractVersionRepository versions=mock(ContractVersionRepository.class);
  final ContractPageRepository pages=mock(ContractPageRepository.class);
  final FileStorage storage=mock(FileStorage.class);
- final ContractService service=new ContractService(contracts,versions,pages,mock(DocumentTypeService.class),storage,mock(JdbcTemplate.class),new ObjectMapper());
+ final ContractService service=new ContractService(contracts,versions,pages,mock(DocumentTypeService.class),storage,mock(JdbcTemplate.class),new ObjectMapper(),mock(org.springframework.beans.factory.ObjectProvider.class));
  final UUID user=UUID.randomUUID();
  @Test void checksOwnerBeforeReadingAnyImageOrVersion(){
   when(contracts.findByContractIdAndUserIdAndDeletedAtIsNull(1L,user)).thenReturn(Optional.empty());
