@@ -1,6 +1,7 @@
 package com.team.docai.domain.schedule.service;
 import com.team.docai.domain.analysis.dto.*;
 import com.team.docai.domain.analysis.service.AnalysisService;
+import com.team.docai.domain.comparison.dto.*;
 import com.team.docai.domain.contract.dto.*;
 import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.domain.notification.service.NotificationService;
