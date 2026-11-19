@@ -44,8 +44,15 @@ public enum ErrorCode {
 
     // Schedule
     SCHEDULE_NOT_FOUND(404, "일정을 찾을 수 없습니다."),
+    CANDIDATE_NOT_FOUND(404, "일정 후보를 찾을 수 없습니다."),
     VERSION_NOT_FOUND(404, "해당 버전을 찾을 수 없습니다."),
-    PAGE_NOT_FOUND(404, "해당 쪽을 찾을 수 없습니다.");
+    PAGE_NOT_FOUND(404, "해당 쪽을 찾을 수 없습니다."),
+
+    // Comparison
+    COMPARISON_NOT_FOUND(404, "비교 결과를 찾을 수 없습니다."),
+    COMPARISON_IMPOSSIBLE(409, "비교할 수 없는 계약서입니다."),
+    COMPARISON_ALREADY_CLOSED(409, "이미 확정되었거나 종료된 비교입니다."),
+    UNCOMPARED_NOT_FOUND(404, "비교하지 못한 항목을 찾을 수 없습니다.");
 
     private final int status;
     private final String message;

@@ -29,6 +29,14 @@ public class DocumentTypeService implements org.springframework.boot.Application
   if(documentTypeCode==null)throw new BusinessException(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE);
   return repository.findById(documentTypeCode).map(t->t.getCheckLevel()).orElseThrow(()->new BusinessException(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE));
  }
+ public String getName(String documentTypeCode){
+  if(documentTypeCode==null)return null;
+  return repository.findById(documentTypeCode).map(t->t.getName()).orElse(switch(documentTypeCode){case "EMPLOYMENT"->"근로계약서";case "LEASE"->"임대차계약서";default->documentTypeCode;});
+ }
+ public String getCategory(String documentTypeCode){
+  if(documentTypeCode==null)return null;
+  return repository.findById(documentTypeCode).map(t->t.getCategory()).orElse("EMPLOYMENT".equals(documentTypeCode)?"WORK":"HOME");
+ }
  public void requireSupported(String code){
   if(!java.util.Set.of("EMPLOYMENT","LEASE").contains(code))throw new BusinessException(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE);
   Boolean supported=jdbc.query("SELECT supported FROM document_type WHERE code=?",rs->rs.next()?rs.getBoolean(1):false,code);

@@ -6,6 +6,8 @@ import jakarta.persistence.LockModeType;
 import java.util.*;
 public interface ContractRepository extends JpaRepository<Contract,Long> {
  Optional<Contract> findByContractIdAndUserIdAndDeletedAtIsNull(Long id,UUID userId);
+ List<Contract> findByUserIdAndArchivedTrueAndDeletedAtIsNullOrderByUpdatedAtDescContractIdDesc(UUID userId);
+ List<Contract> findByUserIdAndDocumentTypeCodeAndArchivedTrueAndDeletedAtIsNullOrderByContractIdDesc(UUID userId,String documentTypeCode);
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select c from Contract c where c.contractId=:id and c.deletedAt is null")
  Optional<Contract> lockActive(@Param("id") Long id);

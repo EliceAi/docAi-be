@@ -46,4 +46,23 @@ class AnalysisContractMethodsTest {
   var repo=mock(DocumentTypeRepository.class);var service=new DocumentTypeService(null,repo);var ctor=DocumentType.class.getDeclaredConstructor();ctor.setAccessible(true);var type=ctor.newInstance();ReflectionTestUtils.setField(type,"checkLevel","A");when(repo.findById("EMPLOYMENT")).thenReturn(Optional.of(type));assertEquals("A",service.getCheckLevel("EMPLOYMENT"));
   assertEquals(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE,assertThrows(BusinessException.class,()->service.getCheckLevel("MISSING")).getErrorCode());
  }
+ @Test void findArchivedSameTypeAndArchiveAndListAndDetail(){
+  var c=contract();ReflectionTestUtils.setField(c,"archived",true);ReflectionTestUtils.setField(c,"title","알바 계약서");
+  var v=ContractVersion.create(10L,2);ReflectionTestUtils.setField(v,"versionId",20L);ReflectionTestUtils.setField(v,"latestAnalysisId",88L);
+  when(contracts.findByUserIdAndDocumentTypeCodeAndArchivedTrueAndDeletedAtIsNullOrderByContractIdDesc(user,"EMPLOYMENT")).thenReturn(List.of(c));
+  when(versions.findByContractIdAndVersionNo(10L,1)).thenReturn(Optional.of(v));
+  var same=service.findArchivedSameType(user,"EMPLOYMENT",99L);
+  assertEquals(1,same.size());assertEquals(10L,same.get(0).contractId());assertEquals(88L,same.get(0).latestAnalysisId());
+  assertTrue(service.findArchivedSameType(user,"EMPLOYMENT",10L).isEmpty());
+
+  when(contracts.findByUserIdAndArchivedTrueAndDeletedAtIsNullOrderByUpdatedAtDescContractIdDesc(user)).thenReturn(List.of(c));
+  var myList=service.listMyContracts(user,"ALL",0,20);
+  assertEquals(1,myList.items().size());assertEquals("알바 계약서",myList.items().get(0).title());
+  assertEquals(1,myList.categoryCounts().get("ALL"));
+
+  when(contracts.findByContractIdAndUserIdAndDeletedAtIsNull(10L,user)).thenReturn(Optional.of(c));
+  when(versions.findByContractIdOrderByVersionNoDesc(10L)).thenReturn(List.of(v));
+  var detail=service.getMyContractDetail(user,10L);
+  assertEquals(10L,detail.contractId());assertEquals(1,detail.versions().size());assertEquals(88L,detail.versions().get(0).analysisId());
+ }
 }

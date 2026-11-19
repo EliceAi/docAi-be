@@ -10,4 +10,5 @@ public class ContractPage {
  private Long versionId; private int pageNo; private String imageKey; private int maskedCount; private OffsetDateTime replacedAt;
  @Builder(access=AccessLevel.PRIVATE) private ContractPage(Long versionId,int pageNo,String imageKey,int maskedCount){this.versionId=versionId;this.pageNo=pageNo;this.imageKey=imageKey;this.maskedCount=maskedCount;}
  public static ContractPage create(Long versionId,int pageNo,String imageKey,int maskedCount){return new ContractPage(versionId,pageNo,imageKey,maskedCount);}
+ public void replace(String imageKey,int maskedCount,OffsetDateTime replacedAt){this.imageKey=imageKey;this.maskedCount=maskedCount;this.replacedAt=replacedAt;}
 }
