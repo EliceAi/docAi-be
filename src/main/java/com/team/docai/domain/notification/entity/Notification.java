@@ -21,4 +21,5 @@ public class Notification extends BaseEntity {
  private Integer dueOffset;
  private LocalDate dueDate;
  @Column(name="is_read") private boolean read;
+ public void markRead(){this.read=true;}
 }

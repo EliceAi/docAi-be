@@ -10,4 +10,6 @@ public class ContractVersion extends BaseEntity {
  private Long contractId; private int versionNo; private int pageCount; private Long latestAnalysisId;
  @Builder(access=AccessLevel.PRIVATE) private ContractVersion(Long contractId,int pageCount){this.contractId=contractId;this.pageCount=pageCount;this.versionNo=1;}
  public static ContractVersion create(Long contractId,int pageCount){return new ContractVersion(contractId,pageCount);}
+ public void moveToContract(Long contractId,int versionNo){this.contractId=contractId;this.versionNo=versionNo;}
+ public void clearLatestAnalysis(){this.latestAnalysisId=null;}
 }

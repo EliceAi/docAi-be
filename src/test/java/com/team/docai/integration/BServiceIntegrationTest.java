@@ -51,13 +51,13 @@ class BServiceIntegrationTest {
  long notification(UUID owner,long schedule,boolean read){
   return jdbc.queryForObject("INSERT INTO notification(user_id,type,title,schedule_id,due_offset,due_date,is_read,created_at,updated_at) VALUES (?,'SCHEDULE_DUE','일정 알림',?,7,'2026-11-18',?,now(),now()) RETURNING notification_id",Long.class,owner,schedule,read);
  }
- @Test void catalogIncludesOnlyTwoSupported() throws Exception {
-  var response=mvc.perform(get("/api/document-types").header("Authorization",auth(user))).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(2)).andReturn().getResponse();
+ @Test void catalogIncludesAll23TypesWithTwoSupported() throws Exception {
+  var response=mvc.perform(get("/api/document-types").header("Authorization",auth(user))).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(23)).andReturn().getResponse();
   var data=mapper.readTree(response.getContentAsString()).get("data");var supported=new HashSet<String>();var codes=new HashSet<String>();
   for(var group:data.get("groups"))for(var type:group.get("documentTypes")){assertTrue(codes.add(type.get("code").asText()));if(type.get("supported").asBoolean())supported.add(type.get("code").asText());}
-  assertEquals(Set.of("LEASE","EMPLOYMENT"),supported);assertEquals(2,codes.size());
-  mvc.perform(get("/api/document-types").param("category","WORK").header("Authorization",auth(user))).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(1));
-  mvc.perform(get("/api/document-types").param("keyword","임대").header("Authorization",auth(user))).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(1));
+  assertEquals(Set.of("LEASE","EMPLOYMENT"),supported);assertEquals(23,codes.size());
+  mvc.perform(get("/api/document-types").param("category","WORK").header("Authorization",auth(user))).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(10));
+  mvc.perform(get("/api/document-types").param("keyword","보증금").header("Authorization",auth(user))).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(2));
   mvc.perform(get("/api/document-types").param("keyword","%_").header("Authorization",auth(user))).andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(0));
   mvc.perform(get("/api/document-types").param("category","INVALID").header("Authorization",auth(user))).andExpect(status().isBadRequest());
  }

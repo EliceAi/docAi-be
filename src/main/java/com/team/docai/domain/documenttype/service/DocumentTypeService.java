@@ -12,7 +12,7 @@ public class DocumentTypeService implements org.springframework.boot.Application
   if(category!=null&&!java.util.Set.of("HOME","WORK").contains(category))throw new BusinessException(ErrorCode.INVALID_INPUT);
   String search=keyword==null?"":keyword.strip().toLowerCase(java.util.Locale.ROOT);
   var all=repository.findAllByOrderBySortOrderAscCodeAsc();
-  var selected=all.stream().filter(t->java.util.Set.of("EMPLOYMENT","LEASE").contains(t.getCode())).filter(t->category==null||category.equals(t.getCategory()))
+  var selected=all.stream().filter(t->category==null||category.equals(t.getCategory()))
    .filter(t->(t.getName()+" "+t.getDescription()).toLowerCase(java.util.Locale.ROOT).contains(search)).toList();
   record GroupKey(String category,String situation) {}
   var groups=new java.util.LinkedHashMap<GroupKey,java.util.List<com.team.docai.domain.documenttype.dto.DocumentTypesInfo.Item>>();
@@ -23,11 +23,23 @@ public class DocumentTypeService implements org.springframework.boot.Application
  }
  @Override @Transactional
  public void run(org.springframework.boot.ApplicationArguments args){
-  jdbc.update("INSERT INTO document_type(code,name,category,situation,description,check_level,supported,popular,sort_order) VALUES ('EMPLOYMENT','근로계약서','WORK','취업·근로 시작','필수 기재사항, 최저임금, 주휴수당','A',true,true,1),('LEASE','임대차계약서','HOME','집 구하기','임대인 = 등기부 소유자인지, 특약, 관리비','A',true,true,2) ON CONFLICT (code) DO NOTHING");
+  try(var input=new org.springframework.core.io.ClassPathResource("document-types.json").getInputStream()){
+   var items=new com.fasterxml.jackson.databind.ObjectMapper().readTree(input);
+   for(var item:items)jdbc.update("INSERT INTO document_type(code,name,category,situation,description,check_level,supported,popular,sort_order) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING",
+    item.path("code").asText(),item.path("name").asText(),item.path("category").asText(),item.path("situation").asText(),item.path("description").asText(),item.path("checkLevel").asText(),item.path("supported").asBoolean(),item.path("popular").asBoolean(),item.path("sortOrder").asInt());
+  }catch(java.io.IOException e){throw new IllegalStateException("문서 종류 목록을 읽을 수 없습니다.",e);}
  }
  public String getCheckLevel(String documentTypeCode){
   if(documentTypeCode==null)throw new BusinessException(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE);
   return repository.findById(documentTypeCode).map(t->t.getCheckLevel()).orElseThrow(()->new BusinessException(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE));
+ }
+ public String getName(String documentTypeCode){
+  if(documentTypeCode==null)return null;
+  return repository.findById(documentTypeCode).map(t->t.getName()).orElse(switch(documentTypeCode){case "EMPLOYMENT"->"근로계약서";case "LEASE"->"임대차계약서";default->documentTypeCode;});
+ }
+ public String getCategory(String documentTypeCode){
+  if(documentTypeCode==null)return null;
+  return repository.findById(documentTypeCode).map(t->t.getCategory()).orElse("EMPLOYMENT".equals(documentTypeCode)?"WORK":"HOME");
  }
  public void requireSupported(String code){
   if(!java.util.Set.of("EMPLOYMENT","LEASE").contains(code))throw new BusinessException(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE);
