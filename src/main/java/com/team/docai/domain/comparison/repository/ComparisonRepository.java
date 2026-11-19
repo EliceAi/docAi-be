@@ -8,6 +8,8 @@ public interface ComparisonRepository extends JpaRepository<Comparison,Long> {
  Optional<Comparison> findByComparisonIdAndUserId(Long comparisonId,UUID userId);
  Optional<Comparison> findByUserIdAndPreviousContractIdAndRevisedContractIdAndStatus(UUID userId,Long previousContractId,Long revisedContractId,String status);
  List<Comparison> findByPreviousContractIdAndStatus(Long previousContractId,String status);
+ List<Comparison> findByRevisedContractIdAndStatus(Long revisedContractId,String status);
+ List<Comparison> findByRevisedVersionIdAndStatus(Long revisedVersionId,String status);
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select c from Comparison c where c.comparisonId=:id and c.userId=:userId")
  Optional<Comparison> lockOwned(@Param("userId") UUID userId,@Param("id") Long id);

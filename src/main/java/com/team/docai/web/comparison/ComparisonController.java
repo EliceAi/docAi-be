@@ -1,4 +1,5 @@
 package com.team.docai.web.comparison;
+import com.team.docai.domain.comparison.dto.CreateComparisonResult;
 import com.team.docai.domain.comparison.service.ComparisonService;
 import com.team.docai.global.common.ApiResponse;
 import com.team.docai.global.error.*;
@@ -19,16 +20,18 @@ public class ComparisonController {
  @PostMapping
  public ResponseEntity<ApiResponse<ComparisonResponse>> create(@AuthenticationPrincipal UUID userId,@RequestBody(required=false) CreateComparisonRequest request){
   if(request==null)throw new BusinessException(ErrorCode.INVALID_INPUT);
-  return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(201,ComparisonResponse.from(service.create(userId,request.toCommand()))));
+  CreateComparisonResult result=service.createWithStatus(userId,request.toCommand());
+  int status=result.created()?201:200;
+  return ResponseEntity.status(status).body(ApiResponse.success(status,ComparisonResponse.from(result.comparison())));
  }
  @GetMapping("/{comparisonId:[0-9]+}")
  public ApiResponse<ComparisonResponse> get(@AuthenticationPrincipal UUID userId,@PathVariable Long comparisonId){
   return ApiResponse.success(ComparisonResponse.from(service.get(userId,comparisonId)));
  }
  @PostMapping("/{comparisonId:[0-9]+}/manual-inputs")
- public ApiResponse<ComparisonResponse> manualInput(@AuthenticationPrincipal UUID userId,@PathVariable Long comparisonId,@RequestBody(required=false) ComparisonManualInputRequest request){
+ public ApiResponse<ComparisonManualInputResponse> manualInput(@AuthenticationPrincipal UUID userId,@PathVariable Long comparisonId,@RequestBody(required=false) ComparisonManualInputRequest request){
   if(request==null)throw new BusinessException(ErrorCode.INVALID_INPUT);
-  return ApiResponse.success(ComparisonResponse.from(service.enterManualInput(userId,comparisonId,request.toCommand())));
+  return ApiResponse.success(ComparisonManualInputResponse.from(service.enterManualInput(userId,comparisonId,request.toCommand())));
  }
  @GetMapping("/{comparisonId:[0-9]+}/schedule-changes")
  public ApiResponse<ComparisonScheduleChangesResponse> scheduleChanges(@AuthenticationPrincipal UUID userId,@PathVariable Long comparisonId){
@@ -39,8 +42,7 @@ public class ComparisonController {
   return ApiResponse.success(ConfirmComparisonResponse.from(service.confirm(userId,comparisonId,key,request==null?new ConfirmComparisonRequest(null).toCommand():request.toCommand())));
  }
  @PostMapping("/{comparisonId:[0-9]+}/discard")
- public ApiResponse<Void> discard(@AuthenticationPrincipal UUID userId,@PathVariable Long comparisonId){
-  service.discard(userId,comparisonId);
-  return ApiResponse.success(null);
+ public ApiResponse<DiscardComparisonResponse> discard(@AuthenticationPrincipal UUID userId,@PathVariable Long comparisonId){
+  return ApiResponse.success(DiscardComparisonResponse.from(service.discard(userId,comparisonId)));
  }
 }

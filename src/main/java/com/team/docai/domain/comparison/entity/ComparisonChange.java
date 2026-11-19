@@ -28,8 +28,10 @@ public class ComparisonChange {
    .beforeText(beforeText).location(location).reason(reason).source("WRITTEN").build();
  }
  public void applyManualInput(String text,boolean previousSide){
+  boolean wasUncompared="UNCOMPARED".equals(this.type);
   this.type="CHANGED";this.source="MANUAL";
-  if(previousSide){this.afterText=this.beforeText;this.beforeText=text;}
+  if(wasUncompared&&previousSide){this.afterText=this.beforeText;this.beforeText=text;}
+  else if(previousSide){this.beforeText=text;}
   else{this.afterText=text;}
   this.note="내가 직접 입력한 내용이에요. 원문 글자를 다시 읽은 결과는 아니에요.";
  }

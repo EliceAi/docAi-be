@@ -76,7 +76,7 @@ class BServiceWebTest {
   when(contracts.archive(eq(user),eq(12L),eq(key),any())).thenReturn(new ArchiveContractInfo(12L,true,1,List.of(new ArchiveContractInfo.SavedSchedule(51L,"첫 출근",LocalDate.of(2026,12,1)))));
   mvc.perform(post("/api/contracts/12/archive").header("Authorization",auth()).header("Idempotency-Key",key.toString()).contentType("application/json")
    .content("{\"schedules\":[{\"candidateId\":301,\"title\":\"첫 출근\",\"date\":\"2026-12-01\",\"source\":\"WRITTEN\"}]}"))
-   .andExpect(status().isOk()).andExpect(jsonPath("$.data.contractId").value(12)).andExpect(jsonPath("$.data.archived").value(true))
+   .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value(201)).andExpect(jsonPath("$.data.contractId").value(12)).andExpect(jsonPath("$.data.archived").value(true))
    .andExpect(jsonPath("$.data.savedSchedules[0].scheduleId").value(51));
   when(contracts.listMyContracts(user,null,0,20)).thenReturn(new MyContractsInfo(
    List.of(new MyContractsInfo.Item(15L,"역삼동 원룸 월세 계약서","LEASE","임대차계약서","HOME",OffsetDateTime.parse("2026-11-12T14:20:00+09:00"),2,OffsetDateTime.parse("2026-11-05T10:00:00+09:00"),3,1,0)),
@@ -107,7 +107,7 @@ class BServiceWebTest {
   mvc.perform(get("/api/analyses/7/schedule-candidates").header("Authorization",auth())).andExpect(status().isOk())
    .andExpect(jsonPath("$.data.contractId").value(12)).andExpect(jsonPath("$.data.candidates[0].candidateId").value(301))
    .andExpect(jsonPath("$.data.missing[0].candidateId").value(306));
-  when(notifications.list(user)).thenReturn(new NotificationsInfo(1L,List.of(
+  when(notifications.list(user,20,null)).thenReturn(new NotificationsInfo(1L,List.of(
    new NotificationsInfo.Item(3L,"SCHEDULE_DUE","D-8 · 입주·전입신고","역삼동 원룸 월세 계약서",new NotificationsInfo.Target(51L,null),false,OffsetDateTime.parse("2026-11-12T09:00:00+09:00")))));
   mvc.perform(get("/api/notifications").header("Authorization",auth())).andExpect(status().isOk())
    .andExpect(jsonPath("$.data.unreadCount").value(1)).andExpect(jsonPath("$.data.items[0].target.scheduleId").value(51));
@@ -120,17 +120,21 @@ class BServiceWebTest {
    List.of(new ComparisonInfo.ChangeItem(1L,"CHANGED","AMOUNT","월세","월 55만 원","월 58만 원","매달 3만 원 늘어요","WRITTEN")),
    List.of(new ComparisonInfo.UncomparedItem(5L,"제5조 관리비 포함 항목","수정본 2쪽 아래 칸","글자가 흐려서 읽지 못했어요.","관리비에는 인터넷 요금이 포함된다.")),
    "보증금 1,000만 원");
-  when(comparisons.create(eq(user),any())).thenReturn(compInfo);
+  when(comparisons.createWithStatus(eq(user),any())).thenReturn(new CreateComparisonResult(compInfo,true));
   mvc.perform(post("/api/comparisons").header("Authorization",auth()).contentType("application/json")
    .content("{\"previousContractId\":15,\"revisedContractId\":21}"))
    .andExpect(status().isCreated()).andExpect(jsonPath("$.data.comparisonId").value(9));
+  when(comparisons.createWithStatus(eq(user),any())).thenReturn(new CreateComparisonResult(compInfo,false));
+  mvc.perform(post("/api/comparisons").header("Authorization",auth()).contentType("application/json")
+   .content("{\"previousContractId\":15,\"revisedContractId\":21}"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.status").value(200)).andExpect(jsonPath("$.data.comparisonId").value(9));
   when(comparisons.get(user,9L)).thenReturn(compInfo);
   mvc.perform(get("/api/comparisons/9").header("Authorization",auth())).andExpect(status().isOk())
    .andExpect(jsonPath("$.data.uncompared[0].uncomparedId").value(5));
-  when(comparisons.enterManualInput(eq(user),eq(9L),any())).thenReturn(compInfo);
+  when(comparisons.enterManualInput(eq(user),eq(9L),any())).thenReturn(new ComparisonManualInputInfo(5L,"CHANGED","CLAUSE","제5조 관리비 포함 항목","관리비에는 인터넷 요금이 포함된다.","수도 요금 포함","MANUAL"));
   mvc.perform(post("/api/comparisons/9/manual-inputs").header("Authorization",auth()).contentType("application/json")
    .content("{\"uncomparedId\":5,\"text\":\"수도 요금 포함\"}"))
-   .andExpect(status().isOk()).andExpect(jsonPath("$.data.comparisonId").value(9));
+   .andExpect(status().isOk()).andExpect(jsonPath("$.data.changeId").value(5)).andExpect(jsonPath("$.data.source").value("MANUAL"));
   when(comparisons.getScheduleChanges(user,9L)).thenReturn(new ComparisonScheduleChangesInfo("역삼동 원룸 월세 계약서",
    List.of(new ComparisonScheduleChangesInfo.ChangeItem(51L,null,"UPDATE","입주·전입신고",LocalDate.of(2026,11,20),LocalDate.of(2026,11,27),"WRITTEN",null))));
   mvc.perform(get("/api/comparisons/9/schedule-changes").header("Authorization",auth())).andExpect(status().isOk())
@@ -141,7 +145,9 @@ class BServiceWebTest {
   mvc.perform(post("/api/comparisons/9/confirm").header("Authorization",auth()).header("Idempotency-Key",key.toString())
    .contentType("application/json").content("{\"schedules\":[]}"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.data.version").value(2));
-  mvc.perform(post("/api/comparisons/9/discard").header("Authorization",auth())).andExpect(status().isOk());
+  when(comparisons.discard(user,9L)).thenReturn(new DiscardComparisonInfo(9L,"DISCARDED"));
+  mvc.perform(post("/api/comparisons/9/discard").header("Authorization",auth())).andExpect(status().isOk())
+   .andExpect(jsonPath("$.data.comparisonId").value(9)).andExpect(jsonPath("$.data.status").value("DISCARDED"));
   verify(comparisons).discard(user,9L);
  }
 }

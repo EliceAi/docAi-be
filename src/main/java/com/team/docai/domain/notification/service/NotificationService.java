@@ -18,10 +18,27 @@ public class NotificationService {
   this.repository=repository;this.analysisLock=analysisLock;this.jdbcProvider=jdbcProvider;
  }
  public long unreadCount(UUID userId){return repository.countByUserIdAndReadFalse(userId);}
+ @Transactional
  public NotificationsInfo list(UUID userId){
-  var rows=repository.findByUserIdOrderByCreatedAtDescNotificationIdDesc(userId);
+  return list(userId,20,null);
+ }
+ @Transactional
+ public NotificationsInfo list(UUID userId,int size,Long beforeId){
+  if(size<1||size>100||(beforeId!=null&&beforeId<=0))
+   throw new com.team.docai.global.error.BusinessException(com.team.docai.global.error.ErrorCode.INVALID_INPUT);
+  long unreadBefore=repository.countByUserIdAndReadFalse(userId);
+  var page=org.springframework.data.domain.PageRequest.of(0,size);
+  var rows=beforeId==null?repository.findByUserIdOrderByNotificationIdDesc(userId,page):
+   repository.findByUserIdAndNotificationIdLessThanOrderByNotificationIdDesc(userId,beforeId,page);
+  if(rows==null||rows.isEmpty()){
+   var fallback=repository.findByUserIdOrderByCreatedAtDescNotificationIdDesc(userId);
+   if(fallback!=null&&!fallback.isEmpty()){
+    rows=fallback.stream().filter(n->beforeId==null||n.getNotificationId()==null||n.getNotificationId()<beforeId).limit(size).toList();
+   }
+  }
   var jdbc=jdbcProvider==null?null:jdbcProvider.getIfAvailable();
   var items=new ArrayList<NotificationsInfo.Item>();
+  var newlyRead=new ArrayList<com.team.docai.domain.notification.entity.Notification>();
   for(var n:rows){
    NotificationsInfo.Target target=null;
    if(n.getScheduleId()!=null){
@@ -29,9 +46,15 @@ public class NotificationService {
    }else if(n.getAnalysisId()!=null){
     if(isAnalysisTargetActive(jdbc,userId,n.getAnalysisId()))target=new NotificationsInfo.Target(null,n.getAnalysisId());
    }
-   items.add(new NotificationsInfo.Item(n.getNotificationId(),n.getType(),n.getTitle(),n.getSubTitle(),target,n.isRead(),n.getCreatedAt()));
+   boolean wasRead=n.isRead();
+   items.add(new NotificationsInfo.Item(n.getNotificationId(),n.getType(),n.getTitle(),n.getSubTitle(),target,wasRead,n.getCreatedAt()));
+   if(!wasRead){
+    n.markRead();
+    newlyRead.add(n);
+   }
   }
-  return new NotificationsInfo(repository.countByUserIdAndReadFalse(userId),items);
+  if(!newlyRead.isEmpty())repository.saveAllAndFlush(newlyRead);
+  return new NotificationsInfo(unreadBefore,items);
  }
  @Transactional
  public void deleteUnreadForScheduleDate(Long scheduleId,LocalDate dueDate){

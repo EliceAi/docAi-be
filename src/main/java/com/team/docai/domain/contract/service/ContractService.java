@@ -1,6 +1,7 @@
 package com.team.docai.domain.contract.service;
 import com.team.docai.domain.analysis.dto.*;
 import com.team.docai.domain.analysis.service.AnalysisService;
+import com.team.docai.domain.comparison.service.ComparisonService;
 import com.team.docai.domain.contract.dto.*;
 import com.team.docai.domain.contract.entity.*;
 import com.team.docai.domain.contract.repository.*;
@@ -27,12 +28,16 @@ public class ContractService {
  private final DocumentTypeService types;private final FileStorage storage;private final JdbcTemplate jdbc;private final ObjectMapper mapper;
  private final ObjectProvider<ScheduleService> scheduleService;
  private final ObjectProvider<AnalysisService> analysisService;
+ private final ObjectProvider<ComparisonService> comparisonService;
  public ContractService(ContractRepository contracts,ContractVersionRepository versions,ContractPageRepository pages,DocumentTypeService types,FileStorage storage,JdbcTemplate jdbc,ObjectMapper mapper,ObjectProvider<ScheduleService> scheduleService){
-  this(contracts,versions,pages,types,storage,jdbc,mapper,scheduleService,null);
+  this(contracts,versions,pages,types,storage,jdbc,mapper,scheduleService,null,null);
+ }
+ public ContractService(ContractRepository contracts,ContractVersionRepository versions,ContractPageRepository pages,DocumentTypeService types,FileStorage storage,JdbcTemplate jdbc,ObjectMapper mapper,ObjectProvider<ScheduleService> scheduleService,ObjectProvider<AnalysisService> analysisService){
+  this(contracts,versions,pages,types,storage,jdbc,mapper,scheduleService,analysisService,null);
  }
  @Autowired
- public ContractService(ContractRepository contracts,ContractVersionRepository versions,ContractPageRepository pages,DocumentTypeService types,FileStorage storage,JdbcTemplate jdbc,ObjectMapper mapper,ObjectProvider<ScheduleService> scheduleService,ObjectProvider<AnalysisService> analysisService){
-  this.contracts=contracts;this.versions=versions;this.pages=pages;this.types=types;this.storage=storage;this.jdbc=jdbc;this.mapper=mapper;this.scheduleService=scheduleService;this.analysisService=analysisService;
+ public ContractService(ContractRepository contracts,ContractVersionRepository versions,ContractPageRepository pages,DocumentTypeService types,FileStorage storage,JdbcTemplate jdbc,ObjectMapper mapper,ObjectProvider<ScheduleService> scheduleService,ObjectProvider<AnalysisService> analysisService,ObjectProvider<ComparisonService> comparisonService){
+  this.contracts=contracts;this.versions=versions;this.pages=pages;this.types=types;this.storage=storage;this.jdbc=jdbc;this.mapper=mapper;this.scheduleService=scheduleService;this.analysisService=analysisService;this.comparisonService=comparisonService;
  }
  public ContractVersionInfo getVersionOwner(UUID userId,Long versionId){
   if(userId==null||versionId==null)throw new BusinessException(ErrorCode.CONTRACT_NOT_FOUND);
@@ -133,12 +138,14 @@ public class ContractService {
   if(!userId.equals(contract.getUserId()))throw new BusinessException(ErrorCode.CONTRACT_NOT_FOUND);
   ContractVersion version=versions.findByContractIdAndVersionNo(contractId,contract.getCurrentVersionNo()).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
   var analysis=analysisService==null?null:analysisService.getIfAvailable();
-  if(analysis!=null&&analysis.getVersionState(version.getVersionId()).hasAnalyzing())throw new BusinessException(ErrorCode.ANALYSIS_NOT_COMPLETED);
-  if(version.getLatestAnalysisId()==null)throw new BusinessException(ErrorCode.ANALYSIS_NOT_COMPLETED);
+  if(analysis!=null&&analysis.getVersionState(version.getVersionId()).hasAnalyzing())throw new BusinessException(ErrorCode.CONTRACT_ANALYZING);
+  if(version.getLatestAnalysisId()==null)throw new BusinessException(ErrorCode.CONTRACT_NOT_ANALYZED);
   if(!contract.isArchived()){
    contract.archive(OffsetDateTime.now());
    contracts.saveAndFlush(contract);
   }
+  var comparisons=comparisonService==null?null:comparisonService.getIfAvailable();
+  if(comparisons!=null)comparisons.supersedeForRevisedContract(contractId);
   var schedules=scheduleService==null?null:scheduleService.getIfAvailable();
   List<ArchiveContractInfo.SavedSchedule> saved=schedules==null?List.of():schedules.saveForArchive(userId,contractId,version.getLatestAnalysisId(),items);
   ArchiveContractInfo info=new ArchiveContractInfo(contractId,true,contract.getCurrentVersionNo(),saved);
@@ -246,13 +253,13 @@ public class ContractService {
   Contract contract=contracts.lockActive(contractId).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
   if(!userId.equals(contract.getUserId()))throw new BusinessException(ErrorCode.CONTRACT_NOT_FOUND);
   if(contract.isArchived())throw new BusinessException(ErrorCode.CONTRACT_ARCHIVED);
+  if(documentTypeCode.equals(contract.getDocumentTypeCode()))throw new BusinessException(ErrorCode.INVALID_INPUT);
   ContractVersion version=versions.findByContractIdAndVersionNo(contractId,contract.getCurrentVersionNo()).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
   var analysis=analysisService==null?null:analysisService.getIfAvailable();
-  if(analysis!=null&&analysis.getVersionState(version.getVersionId()).hasAnalyzing())throw new BusinessException(ErrorCode.ANALYSIS_NOT_COMPLETED);
+  if(analysis!=null&&analysis.getVersionState(version.getVersionId()).hasAnalyzing())throw new BusinessException(ErrorCode.CONTRACT_ANALYZING);
+  if(version.getLatestAnalysisId()!=null)throw new BusinessException(ErrorCode.CONTRACT_ALREADY_ANALYZED);
   contract.changeDocumentType(documentTypeCode);
-  version.clearLatestAnalysis();
   contracts.saveAndFlush(contract);
-  versions.saveAndFlush(version);
   return new ChangeDocumentTypeInfo(contractId,documentTypeCode,"DRAFT");
  }
  @Transactional
@@ -265,7 +272,7 @@ public class ContractService {
   if(contract.isArchived())throw new BusinessException(ErrorCode.CONTRACT_ARCHIVED);
   ContractVersion version=versions.findByContractIdAndVersionNo(contractId,contract.getCurrentVersionNo()).orElseThrow(()->new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
   var analysis=analysisService==null?null:analysisService.getIfAvailable();
-  if(analysis!=null&&analysis.getVersionState(version.getVersionId()).hasAnalyzing())throw new BusinessException(ErrorCode.ANALYSIS_NOT_COMPLETED);
+  if(analysis!=null&&analysis.getVersionState(version.getVersionId()).hasAnalyzing())throw new BusinessException(ErrorCode.CONTRACT_ANALYZING);
   ContractPage page=pages.findByVersionIdAndPageNo(version.getVersionId(),pageNo).orElseThrow(()->new BusinessException(ErrorCode.PAGE_NOT_FOUND));
   String oldKey=page.getImageKey();
   String newKey=storage.save(userId,imageBytes);
@@ -279,6 +286,8 @@ public class ContractService {
   version.clearLatestAnalysis();
   pages.saveAndFlush(page);
   versions.saveAndFlush(version);
+  var comparisons=comparisonService==null?null:comparisonService.getIfAvailable();
+  if(comparisons!=null)comparisons.supersedeForRevisedVersion(version.getVersionId());
   int pageCount=pages.findByVersionIdOrderByPageNoAsc(version.getVersionId()).size();
   return new ReuploadPageInfo(contractId,pageNo,pageCount,"DRAFT");
  }

@@ -112,7 +112,7 @@ public class ScheduleService {
    var fallback=resolveAnalysisOwnerFallback(userId,analysisId);
    contractId=fallback.contractId();contractTitle=fallback.title();status=fallback.status();
   }
-  if(!"COMPLETED".equals(status))throw new BusinessException(ErrorCode.ANALYSIS_NOT_COMPLETED);
+  if(!"COMPLETED".equals(status))throw new BusinessException(ErrorCode.CONTRACT_NOT_ANALYZED);
   List<ScheduleCandidateInfo> all=analysis==null?List.of():analysis.getScheduleCandidates(analysisId);
   var candidates=new ArrayList<ScheduleCandidateSetInfo.CandidateItem>();
   var missing=new ArrayList<ScheduleCandidateSetInfo.MissingItem>();
@@ -132,31 +132,39 @@ public class ScheduleService {
   Map<Long,ScheduleCandidateInfo> candidateMap=analysis==null||analysisId==null?Map.of():
    analysis.getScheduleCandidates(analysisId).stream().collect(Collectors.toMap(ScheduleCandidateInfo::candidateId,Function.identity(),(a,b)->a));
   Set<Long> seenCandidates=new HashSet<>();
-  var result=new ArrayList<ArchiveContractInfo.SavedSchedule>();
+  Set<String> seenConflictGroups=new HashSet<>();
   for(var item:items){
    if(item==null||item.title()==null||item.title().isBlank()||item.title().codePointCount(0,item.title().length())>50||item.date()==null)
     throw new BusinessException(ErrorCode.INVALID_INPUT);
    Long candidateId=item.candidateId();
-   String dateKind=null;String location=null;ScheduleSource source;
    if(candidateId!=null){
     if(!seenCandidates.add(candidateId))throw new BusinessException(ErrorCode.INVALID_INPUT);
     ScheduleCandidateInfo cand=candidateMap.get(candidateId);
     if(cand==null)throw new BusinessException(ErrorCode.CANDIDATE_NOT_FOUND);
+    if(cand.conflictGroup()!=null&&!cand.conflictGroup().isBlank()&&!seenConflictGroups.add(cand.conflictGroup())){
+     throw new BusinessException(ErrorCode.DATE_CONFLICT_UNRESOLVED);
+    }
+   }
+  }
+  var result=new ArrayList<ArchiveContractInfo.SavedSchedule>();
+  for(var item:items){
+   Long candidateId=item.candidateId();
+   String dateKind=null;String location=null;ScheduleSource source;
+   if(candidateId!=null){
+    var existing=schedules.findByCandidateId(candidateId);
+    if(existing.isPresent()){
+     var s=existing.get();
+     result.add(new ArchiveContractInfo.SavedSchedule(s.getScheduleId(),s.getTitle(),s.getDate()));
+     continue;
+    }
+    ScheduleCandidateInfo cand=candidateMap.get(candidateId);
     dateKind=cand.dateKind();
-    if(cand.date()!=null&&cand.date().equals(item.date())){
+    if(cand.date()!=null&&cand.date().equals(item.date())&&cand.title().equals(item.title().strip())){
      source="REVIEW".equals(cand.source())?ScheduleSource.REVIEW:ScheduleSource.WRITTEN;
      location=cand.location();
     }else{
      source=ScheduleSource.MANUAL;
      location=null;
-    }
-    var existing=schedules.findByCandidateId(candidateId);
-    if(existing.isPresent()){
-     var s=existing.get();
-     s.updateFromCandidate(candidateId,dateKind,item.title().strip(),item.date(),source,location);
-     schedules.saveAndFlush(s);
-     result.add(new ArchiveContractInfo.SavedSchedule(s.getScheduleId(),s.getTitle(),s.getDate()));
-     continue;
     }
    }else{
     source=ScheduleSource.MANUAL;
@@ -172,9 +180,25 @@ public class ScheduleService {
    var analysis=analysisProvider==null?null:analysisProvider.getIfAvailable();
    Map<Long,ScheduleCandidateInfo> candidateMap=analysis==null||revisedAnalysisId==null?Map.of():
     analysis.getScheduleCandidates(revisedAnalysisId).stream().collect(Collectors.toMap(ScheduleCandidateInfo::candidateId,Function.identity(),(a,b)->a));
-   var notifications=notificationProvider==null?null:notificationProvider.getIfAvailable();
+   Set<Long> seenCandidates=new HashSet<>();
+   Set<String> seenConflictGroups=new HashSet<>();
    for(var item:items){
     if(item==null||item.action()==null)throw new BusinessException(ErrorCode.INVALID_INPUT);
+    Long candId=item.candidateId();
+    if(candId!=null){
+     if(!seenCandidates.add(candId))throw new BusinessException(ErrorCode.INVALID_INPUT);
+     ScheduleCandidateInfo cand=candidateMap.get(candId);
+     if(cand==null)throw new BusinessException(ErrorCode.CANDIDATE_NOT_FOUND);
+     if(cand.conflictGroup()!=null&&!cand.conflictGroup().isBlank()&&!seenConflictGroups.add(cand.conflictGroup())){
+      throw new BusinessException(ErrorCode.DATE_CONFLICT_UNRESOLVED);
+     }
+     if("CREATE".equals(item.action())&&schedules.findByCandidateId(candId).isPresent()){
+      throw new BusinessException(ErrorCode.INVALID_INPUT);
+     }
+    }
+   }
+   var notifications=notificationProvider==null?null:notificationProvider.getIfAvailable();
+   for(var item:items){
     switch(item.action()){
      case "DELETE"->{
       if(item.scheduleId()==null)throw new BusinessException(ErrorCode.INVALID_INPUT);
@@ -183,19 +207,16 @@ public class ScheduleService {
       schedules.delete(s);
      }
      case "UPDATE"->{
-      if(item.scheduleId()==null||item.date()==null)throw new BusinessException(ErrorCode.INVALID_INPUT);
+      if(item.scheduleId()==null||item.date()==null||item.title()==null||item.title().isBlank())throw new BusinessException(ErrorCode.INVALID_INPUT);
+      String t=item.title().strip();
+      if(t.codePointCount(0,t.length())>50)throw new BusinessException(ErrorCode.INVALID_INPUT);
       var s=schedules.lockOwned(userId,item.scheduleId()).orElseThrow(()->new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND));
       if(!contractId.equals(s.getContractId()))throw new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND);
       LocalDate oldDate=s.getDate();
-      if(item.title()!=null&&!item.title().isBlank()){
-       String t=item.title().strip();
-       if(t.codePointCount(0,t.length())>50)throw new BusinessException(ErrorCode.INVALID_INPUT);
-       s.updateTitle(t);
-      }
+      s.updateTitle(t);
       if(item.candidateId()!=null){
        ScheduleCandidateInfo cand=candidateMap.get(item.candidateId());
-       if(cand==null)throw new BusinessException(ErrorCode.CANDIDATE_NOT_FOUND);
-       ScheduleSource src=cand.date()!=null&&cand.date().equals(item.date())?("REVIEW".equals(cand.source())?ScheduleSource.REVIEW:ScheduleSource.WRITTEN):ScheduleSource.MANUAL;
+       ScheduleSource src=cand.date()!=null&&cand.date().equals(item.date())&&cand.title().equals(t)?("REVIEW".equals(cand.source())?ScheduleSource.REVIEW:ScheduleSource.WRITTEN):ScheduleSource.MANUAL;
        s.updateFromCandidate(item.candidateId(),cand.dateKind(),s.getTitle(),item.date(),src,src==ScheduleSource.MANUAL?null:cand.location());
       }else{
        s.updateDate(item.date());
@@ -204,28 +225,17 @@ public class ScheduleService {
       schedules.saveAndFlush(s);
      }
      case "CREATE"->{
-      if(item.date()==null)throw new BusinessException(ErrorCode.INVALID_INPUT);
-      String title=item.title()==null?"":item.title().strip();
+      if(item.date()==null||item.title()==null||item.title().isBlank())throw new BusinessException(ErrorCode.INVALID_INPUT);
+      String title=item.title().strip();
+      if(title.codePointCount(0,title.length())>50)throw new BusinessException(ErrorCode.INVALID_INPUT);
       Long candId=item.candidateId();
       String dateKind=null;String location=null;ScheduleSource src=ScheduleSource.MANUAL;
       if(candId!=null){
        ScheduleCandidateInfo cand=candidateMap.get(candId);
-       if(cand==null)throw new BusinessException(ErrorCode.CANDIDATE_NOT_FOUND);
-       if(title.isEmpty())title=cand.title();
        dateKind=cand.dateKind();
-       if(cand.date()!=null&&cand.date().equals(item.date())){
+       if(cand.date()!=null&&cand.date().equals(item.date())&&cand.title().equals(title)){
         src="REVIEW".equals(cand.source())?ScheduleSource.REVIEW:ScheduleSource.WRITTEN;
         location=cand.location();
-       }
-      }
-      if(title.isEmpty()||title.codePointCount(0,title.length())>50)throw new BusinessException(ErrorCode.INVALID_INPUT);
-      if(candId!=null){
-       var existing=schedules.findByCandidateId(candId);
-       if(existing.isPresent()){
-        var s=existing.get();
-        s.updateFromCandidate(candId,dateKind,title,item.date(),src,location);
-        schedules.saveAndFlush(s);
-        continue;
        }
       }
       schedules.saveAndFlush(Schedule.create(userId,contractId,candId,dateKind,title,item.date(),src,location));

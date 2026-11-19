@@ -25,8 +25,8 @@ public class ContractController {
   return ApiResponse.success(MyContractDetailResponse.from(contracts.getMyContractDetail(userId,contractId)));
  }
  @PostMapping("/{contractId:[0-9]+}/archive")
- public ApiResponse<ArchiveContractResponse> archive(@AuthenticationPrincipal UUID userId,@PathVariable Long contractId,@RequestHeader("Idempotency-Key") UUID key,@RequestBody(required=false) ArchiveContractRequest request){
-  return ApiResponse.success(ArchiveContractResponse.from(contracts.archive(userId,contractId,key,request==null?new ArchiveContractRequest(null).toCommand():request.toCommand())));
+ public ResponseEntity<ApiResponse<ArchiveContractResponse>> archive(@AuthenticationPrincipal UUID userId,@PathVariable Long contractId,@RequestHeader("Idempotency-Key") UUID key,@RequestBody(required=false) ArchiveContractRequest request){
+  return ResponseEntity.status(201).body(ApiResponse.success(201,ArchiveContractResponse.from(contracts.archive(userId,contractId,key,request==null?new ArchiveContractRequest(null).toCommand():request.toCommand()))));
  }
  @PatchMapping("/{contractId:[0-9]+}")
  public ApiResponse<ChangeDocumentTypeResponse> changeDocumentType(@AuthenticationPrincipal UUID userId,@PathVariable Long contractId,@Valid @RequestBody ChangeDocumentTypeRequest request){
