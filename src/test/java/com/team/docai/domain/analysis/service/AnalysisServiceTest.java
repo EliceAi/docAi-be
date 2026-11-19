@@ -22,7 +22,13 @@ import com.team.docai.domain.analysis.repository.AnalysisFindingRepository;
 import com.team.docai.domain.analysis.repository.AnalysisKeyTermRepository;
 import com.team.docai.domain.analysis.repository.AnalysisRepository;
 import com.team.docai.domain.analysis.repository.ScheduleCandidateRepository;
+import com.team.docai.domain.analysis.dto.AnalysisRefInfo;
+import com.team.docai.domain.contract.dto.ContractVersionInfo;
+import com.team.docai.domain.contract.service.ContractService;
+import com.team.docai.global.error.BusinessException;
+import com.team.docai.global.error.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -56,12 +62,16 @@ class AnalysisServiceTest {
     AnalysisClauseRepository clauseRepository = mock(AnalysisClauseRepository.class);
     AnalysisFindingRepository findingRepository = mock(AnalysisFindingRepository.class);
     ScheduleCandidateRepository candidateRepository = mock(ScheduleCandidateRepository.class);
+    ContractService contractService = mock(ContractService.class);
+    @SuppressWarnings("unchecked")
+    ObjectProvider<ContractService> contractServiceProvider = mock(ObjectProvider.class);
     AnalysisService service;
 
     @BeforeEach
     void setUp() {
         service = new AnalysisService(analysisRepository, chunkRepository, keyTermRepository, clauseRepository,
-                findingRepository, candidateRepository);
+                findingRepository, candidateRepository, contractServiceProvider);
+        when(contractServiceProvider.getObject()).thenReturn(contractService);
     }
 
     static <T> T withId(T entity, String field, Long id) {
@@ -217,8 +227,79 @@ class AnalysisServiceTest {
     }
 
     @Test
-    void getRef_B_메서드가_생기기_전에는_막혀_있다() {
-        assertThatThrownBy(() -> service.getRef(UUID.randomUUID(), ANALYSIS_ID))
-                .isInstanceOf(UnsupportedOperationException.class);
+    void getRef_내_분석이면_분석_버전_계약서_상태_완료시각을_돌려준다() {
+        UUID user = UUID.randomUUID();
+        when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.of(analysis(AnalysisStatus.COMPLETED)));
+        when(contractService.getVersionOwner(user, VERSION_ID)).thenReturn(new ContractVersionInfo(12L, 1, 2, "근로계약서", 0));
+
+        AnalysisRefInfo ref = service.getRef(user, ANALYSIS_ID);
+
+        assertThat(ref).isEqualTo(new AnalysisRefInfo(ANALYSIS_ID, VERSION_ID, 12L, "COMPLETED", COMPLETED));
+        verify(contractService).getVersionOwner(user, VERSION_ID);
+    }
+
+    @Test
+    void getRef_완료되지_않은_분석도_상태만_담아_돌려준다() {
+        UUID user = UUID.randomUUID();
+        when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.of(analysis(AnalysisStatus.ANALYZING)));
+        when(contractService.getVersionOwner(user, VERSION_ID)).thenReturn(new ContractVersionInfo(12L, 1, 2, null, 0));
+
+        AnalysisRefInfo ref = service.getRef(user, ANALYSIS_ID);
+
+        assertThat(ref.status()).isEqualTo("ANALYZING");
+        assertThat(ref.completedAt()).isNull();
+    }
+
+    @Test
+    void getRef_분석이_없으면_B를_부르지_않고_ANALYSIS_NOT_FOUND() {
+        when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.empty());
+
+        assertRefCode(UUID.randomUUID(), ErrorCode.ANALYSIS_NOT_FOUND);
+        verify(contractService, never()).getVersionOwner(any(), anyLong());
+    }
+
+    @Test
+    void getRef_남의_분석이면_B의_CONTRACT_NOT_FOUND를_ANALYSIS_NOT_FOUND로_바꾼다() {
+        UUID other = UUID.randomUUID();
+        when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.of(analysis(AnalysisStatus.COMPLETED)));
+        when(contractService.getVersionOwner(other, VERSION_ID))
+                .thenThrow(new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+
+        assertRefCode(other, ErrorCode.ANALYSIS_NOT_FOUND);
+    }
+
+    @Test
+    void getRef_계약서가_삭제됐으면_ANALYSIS_NOT_FOUND() {
+        // B getVersionOwner 는 삭제된 계약서(deleted_at 있음)도 CONTRACT_NOT_FOUND 로 던진다 (AnalysisContractMethodsTest)
+        UUID user = UUID.randomUUID();
+        when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.of(analysis(AnalysisStatus.FAILED)));
+        when(contractService.getVersionOwner(user, VERSION_ID))
+                .thenThrow(new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+
+        assertRefCode(user, ErrorCode.ANALYSIS_NOT_FOUND);
+    }
+
+    @Test
+    void getRef_B의_다른_예외는_그대로_올린다() {
+        UUID user = UUID.randomUUID();
+        when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.of(analysis(AnalysisStatus.COMPLETED)));
+        when(contractService.getVersionOwner(user, VERSION_ID))
+                .thenThrow(new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));
+
+        assertRefCode(user, ErrorCode.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void getRef_userId나_analysisId가_없으면_ANALYSIS_NOT_FOUND() {
+        assertRefCode(null, ErrorCode.ANALYSIS_NOT_FOUND);
+        assertThatThrownBy(() -> service.getRef(UUID.randomUUID(), null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ANALYSIS_NOT_FOUND));
+        verify(analysisRepository, never()).findById(any());
+    }
+
+    private void assertRefCode(UUID userId, ErrorCode code) {
+        assertThatThrownBy(() -> service.getRef(userId, ANALYSIS_ID))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(code));
     }
 }

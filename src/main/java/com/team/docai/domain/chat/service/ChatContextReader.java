@@ -47,6 +47,9 @@ import java.util.UUID;
  * </ol>
  * 답변에 쓰는 분석: 요청·대화의 분석이 COMPLETED 면 그것, 아니면(분석 중·실패) 계약서의 최신 완료 분석, 없으면 내용 없이 답한다
  * ("분석 전 계약서는 내용을 근거로 답하지 않는다").
+ * <p>
+ * 기존 대화의 분석·계약서의 최신 분석을 읽을 때 그 계약서가 getSummary 확인 뒤 동시에 삭제됐으면 B getVersionOwner 의
+ * CONTRACT_NOT_FOUND 를 그대로 올린다 (B 예외로 트랜잭션이 rollback-only 가 되므로 삼키고 이어 가지 않는다).
  */
 @Component
 @RequiredArgsConstructor
@@ -107,8 +110,7 @@ class ChatContextReader {
                 contract = contractService.getSummary(userId, contractId);
             }
             if (command.analysisId() != null) {
-                requested = analysisChatQueryService.findForChat(userId, command.analysisId())
-                        .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
+                requested = findRequestedAnalysis(userId, command.analysisId());
                 if (contractId == null) {
                     contractId = requested.contractId();
                     contract = contractService.getSummary(userId, contractId);
@@ -159,6 +161,22 @@ class ChatContextReader {
         return new ChatContext(userId, conversationId, previousSummary, command.message(), command.screen(),
                 focus == null ? null : focus.clauseId(), contractId, analysisIdToStore, comparisonId, linked,
                 analysis, pendingStatus, focus, comparison, sources, recent);
+    }
+
+    /**
+     * 새 대화의 분석. 없거나 남의 것·삭제된 계약서의 분석이면 ANALYSIS_NOT_FOUND.
+     * B 가 CONTRACT_NOT_FOUND 를 던져 트랜잭션이 rollback-only 가 돼도 여기서 예외로 끝내므로 커밋하지 않는다.
+     */
+    private AnalysisChatInfo findRequestedAnalysis(UUID userId, Long analysisId) {
+        try {
+            return analysisChatQueryService.findForChat(userId, analysisId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.CONTRACT_NOT_FOUND) {
+                throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
+            }
+            throw e;
+        }
     }
 
     /**
