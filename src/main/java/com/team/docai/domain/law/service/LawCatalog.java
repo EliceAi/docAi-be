@@ -33,7 +33,9 @@ public final class LawCatalog {
             new Target("근로기준법", "근로기준법", null),
             new Target("근로기준법 시행령", "근로기준법", "근로기준법"),
             new Target("최저임금법", "최저임금법", null),
+            new Target("최저임금법 시행령", "최저임금법", "최저임금법"),
             new Target("근로자퇴직급여 보장법", "근로자퇴직급여 보장법", null),
+            new Target("근로자퇴직급여 보장법 시행령", "근로자퇴직급여 보장법", "근로자퇴직급여 보장법"),
             new Target("주택임대차보호법", "주택임대차보호법", null),
             new Target("주택임대차보호법 시행령", "주택임대차보호법", "주택임대차보호법"),
             new Target("민법", "민법", null));
@@ -56,12 +58,14 @@ public final class LawCatalog {
     public record DocumentTypeLawSeed(String documentTypeCode, String lawName, boolean core) {
     }
 
-    /** 문서 종류별 관련 법령 (2026-11-17 팀 지시). document_type 은 B 소유라 행이 없으면 그 종류만 건너뛴다. */
+    /** 문서 종류별 관련 법령 (2026-11-17 팀 지시, 2026-11-19 시행령 2개 추가: 수습 감액·퇴직금 산정 근거). document_type 은 B 소유라 행이 없으면 그 종류만 건너뛴다. */
     public static final List<DocumentTypeLawSeed> DOCUMENT_TYPE_LAWS = List.of(
             new DocumentTypeLawSeed("EMPLOYMENT", "근로기준법", true),
             new DocumentTypeLawSeed("EMPLOYMENT", "근로기준법 시행령", false),
             new DocumentTypeLawSeed("EMPLOYMENT", "최저임금법", true),
+            new DocumentTypeLawSeed("EMPLOYMENT", "최저임금법 시행령", false),
             new DocumentTypeLawSeed("EMPLOYMENT", "근로자퇴직급여 보장법", true),
+            new DocumentTypeLawSeed("EMPLOYMENT", "근로자퇴직급여 보장법 시행령", false),
             new DocumentTypeLawSeed("LEASE", "주택임대차보호법", true),
             new DocumentTypeLawSeed("LEASE", "주택임대차보호법 시행령", false),
             new DocumentTypeLawSeed("LEASE", "민법", false));

@@ -88,6 +88,35 @@ public class LawLoader {
                 LawCatalog.RULE_SEEDS, properties.forceRefresh(), properties.offline());
     }
 
+    /**
+     * 실제 적재를 대상 법령 일부만 (docai.law.only). 이미 적재한 법령의 목록·본문을 다시 받지 않아,
+     * 그 사이 개정이 있어도 기존 조문 행(꼬리표 연결 issue_tag_article 이 가리키는 행)을 건드리지 않는다.
+     * 약칭·문서별 관련 법령·숫자 규칙 시드는 전체를 다시 넣는다 (이미 있으면 건너뜀).
+     *
+     * @param onlyNames 법령명 (LawCatalog.TARGETS 의 이름, 띄어쓰기 무시: bootRun --args 가 공백으로 나누므로). 비면 전체
+     */
+    public LawLoadReport load(Set<String> onlyNames) {
+        if (onlyNames == null || onlyNames.isEmpty()) {
+            return load();
+        }
+        Set<String> wanted = new HashSet<>();
+        Set<String> known = new HashSet<>();
+        LawCatalog.TARGETS.forEach(t -> known.add(LawNames.normalize(t.name())));
+        for (String name : onlyNames) {
+            String norm = LawNames.normalize(name);
+            if (!known.contains(norm)) {
+                throw new IllegalArgumentException("docai.law.only 에 적재 대상이 아닌 법령: " + name);
+            }
+            wanted.add(norm);
+        }
+        if (!properties.offline() && properties.minInterval().compareTo(LawProperties.REAL_MIN_INTERVAL) < 0) {
+            throw new IllegalStateException("docai.law.min-interval 은 실제 적재에서 1초 이상이어야 합니다: " + properties.minInterval());
+        }
+        List<LawCatalog.Target> targets = LawCatalog.TARGETS.stream().filter(t -> wanted.contains(LawNames.normalize(t.name()))).toList();
+        return load(targets, LawCatalog.MANUAL_ALIASES, LawCatalog.DOCUMENT_TYPE_LAWS,
+                LawCatalog.RULE_SEEDS, properties.forceRefresh(), properties.offline());
+    }
+
     public LawLoadReport load(List<LawCatalog.Target> targets, Map<String, String> manualAliases,
                               List<RuleSeed> ruleSeeds, boolean force) {
         return load(targets, manualAliases, List.of(), ruleSeeds, force, false);

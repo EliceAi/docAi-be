@@ -189,7 +189,7 @@ class ChatContextReader {
         if (!keywords.isEmpty()) {
             List<Long> lawIds = analysis == null ? List.of() : lawSearchService.findLawIds(analysis.documentTypeCode());
             int added = 0;
-            for (LawArticleInfo a : lawSearchService.search(keywords, lawIds, null, MAX_SEARCH_SOURCES)) {
+            for (LawArticleInfo a : lawSearchService.searchWithDailyTerms(keywords, lawIds, null, MAX_SEARCH_SOURCES)) {
                 if (added >= MAX_SEARCH_SOURCES) {
                     break;
                 }

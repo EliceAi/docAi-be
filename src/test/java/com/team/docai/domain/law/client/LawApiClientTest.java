@@ -119,4 +119,22 @@ class LawApiClientTest {
         assertThatThrownBy(() -> noKey.fetchBody("1")).isInstanceOf(LawApiException.class);
         assertThat(server.received()).isEmpty();
     }
+
+    @Test
+    void 일상용어_연계는_dlytrmRlt_로_부르고_연계가_없다는_안내도_정상_응답으로_받는다() {
+        server.handler(q -> new FakeLawServer.Reply(200, q.contains("query=%EC%97%86%EC%9D%8C") || q.contains("query=없음")
+                ? "{\"Law\": \"일치하는 일상용어가 없습니다.\"}"
+                : "{\"dlytrmRltService\":{\"일상용어\":{\"연계용어\":{\"법령용어명\":\"차임\",\"용어간관계링크\":\"/DRF/lawService.do?OC="
+                        + LawTestSupport.FAKE_OC + "&target=lstrmRlt\"}}}}"));
+
+        String body = client.fetchDailyTermLinks("월세");
+        String none = client.fetchDailyTermLinks("없음");
+
+        FakeLawServer.Received r = server.received().get(0);
+        assertThat(r.path()).isEqualTo("lawService.do");
+        assertThat(r.query()).contains("target=dlytrmRlt", "type=JSON", "query=월세");
+        assertThat(body).doesNotContain(LawTestSupport.FAKE_OC).contains("OC=***", "차임");
+        assertThat(none).contains("일치하는 일상용어가 없습니다");
+        assertThat(server.received()).hasSize(2);
+    }
 }

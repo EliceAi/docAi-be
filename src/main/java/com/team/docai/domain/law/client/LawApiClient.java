@@ -17,7 +17,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 법제처 Open API (현행법령 목록 lawSearch.do, 본문 lawService.do, target=law, type=JSON) 호출.
+ * 법제처 Open API (현행법령 목록 lawSearch.do, 본문 lawService.do, target=law, type=JSON,
+ * 일상용어-법령용어 연계 lawService.do target=dlytrmRlt) 호출.
  * <ul>
  *   <li>한 번에 하나씩: 모든 호출이 이 객체의 잠금 안에서 일어나 동시 호출이 없다.</li>
  *   <li>호출 사이 최소 간격 {@code docai.law.min-interval} (기본 1초). 재시도도 같은 규칙을 따른다.</li>
@@ -84,6 +85,23 @@ public class LawApiClient {
         return call(uri, "법령");
     }
 
+    /**
+     * 지능형 법령정보지식베이스 일상용어-법령용어 연계 (lawService.do, target=dlytrmRlt, query=일상용어).
+     * 반환은 OC 를 가린 응답 원본. 연계가 있으면 루트 dlytrmRltService, 일치하는 일상용어가 없으면 루트 Law(안내 문구).
+     * 분석·챗봇 중에는 부르지 않고 사전 적재(LawTermDictionaryBuilder)만 부른다.
+     */
+    public String fetchDailyTermLinks(String dailyTerm) {
+        URI uri = UriComponentsBuilder.fromUriString(baseUrl + "/lawService.do")
+                .queryParam("OC", apiKey)
+                .queryParam("target", "dlytrmRlt")
+                .queryParam("type", "JSON")
+                .queryParam("query", dailyTerm)
+                .encode(StandardCharsets.UTF_8)
+                .build()
+                .toUri();
+        return call(uri, "dlytrmRltService", "Law");
+    }
+
     /** 이 객체가 실제로 보낸 HTTP 요청 수 (재시도 포함). */
     public int callCount() {
         synchronized (lock) {
@@ -91,18 +109,18 @@ public class LawApiClient {
         }
     }
 
-    private String call(URI uri, String expectedRootField) {
+    private String call(URI uri, String... expectedRootFields) {
         if (apiKey.isEmpty()) {
             throw new LawApiException("법령 API 인증값(LAW_API_KEY)이 비어 있습니다.");
         }
         synchronized (lock) {
             String masked = mask(uri.toString());
             try {
-                return attempt(uri, masked, expectedRootField, minInterval);
+                return attempt(uri, masked, expectedRootFields, minInterval);
             } catch (RuntimeException first) {
                 log.warn("법령 API 실패, {}ms 뒤 1회 재시도: {} ({})", retryDelay.toMillis(), masked, mask(first.getMessage()));
                 try {
-                    return attempt(uri, masked, expectedRootField, retryDelay);
+                    return attempt(uri, masked, expectedRootFields, retryDelay);
                 } catch (RuntimeException second) {
                     throw new LawApiException("법령 API 재시도 실패: " + masked + " (" + shorten(mask(second.getMessage())) + ")");
                 }
@@ -110,7 +128,7 @@ public class LawApiClient {
         }
     }
 
-    private String attempt(URI uri, String maskedUrl, String expectedRootField, Duration gap) {
+    private String attempt(URI uri, String maskedUrl, String[] expectedRootFields, Duration gap) {
         waitGap(gap);
         long start = System.nanoTime();
         try {
@@ -121,14 +139,14 @@ public class LawApiClient {
                     .body(String.class);
             log.info("법령 API 호출 {} ({}ms)", maskedUrl, (System.nanoTime() - start) / 1_000_000);
             String maskedBody = mask(body);
-            validate(maskedBody, expectedRootField);
+            validate(maskedBody, expectedRootFields);
             return maskedBody;
         } finally {
             lastCallEndNanos = System.nanoTime();
         }
     }
 
-    private void validate(String body, String expectedRootField) {
+    private void validate(String body, String[] expectedRootFields) {
         if (body == null || body.isBlank()) {
             throw new IllegalStateException("빈 응답");
         }
@@ -138,7 +156,7 @@ public class LawApiClient {
         } catch (Exception e) {
             throw new IllegalStateException("JSON 이 아닌 응답: " + shorten(body));
         }
-        if (root == null || !root.has(expectedRootField)) {
+        if (root == null || java.util.Arrays.stream(expectedRootFields).noneMatch(root::has)) {
             throw new IllegalStateException("예상한 응답이 아님: " + shorten(body));
         }
     }

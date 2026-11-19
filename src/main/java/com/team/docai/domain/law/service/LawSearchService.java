@@ -40,6 +40,7 @@ import java.util.stream.Collectors;
  *   <li>조문 번호로 직접 찾기: "제10조의2" → (10, 2).</li>
  *   <li>키워드 전문 검색: search_vector(simple) 에 키워드 앞부분 일치(키워드:*)로 찾고 ts_rank 순.</li>
  *   <li>꼬리표 → 조문 매핑, 해석 메모, 문서 종류별 관련 법령.</li>
+ *   <li>일상용어 → 법령용어 사전으로 넓힌 검색 ({@link #searchWithDailyTerms}).</li>
  * </ul>
  * 기준일(계약일)에 유효한 행만 돌려준다. 기준일이 null 이면 오늘.
  */
@@ -59,6 +60,7 @@ public class LawSearchService {
     private final GuidanceRepository guidanceRepository;
     private final IssueTagRepository issueTagRepository;
     private final LawProperties properties;
+    private final LawTermDictionary lawTermDictionary;
 
     /** 문서 종류의 문제 꼬리표 (분석 1차 프롬프트, 저장 전 목록 확인). 코드 순 */
     public List<IssueTagInfo> findIssueTags(String documentTypeCode) {
@@ -126,6 +128,55 @@ public class LawSearchService {
             scores.put(((Number) row[0]).longValue(), ((Number) row[1]).doubleValue());
         }
         return load(new ArrayList<>(scores.keySet()), scores, date);
+    }
+
+    /**
+     * 지금 시행 중인 조문 중 검색어 하나에 맞는 행 수 (검색과 같은 앞부분 일치). 일상용어 사전 적재가 쓴다.
+     * 검색어가 글자·숫자를 하나도 갖지 않거나 법령이 없으면 0.
+     */
+    public long countCurrentArticles(String keyword, Collection<Long> lawIds) {
+        String tsquery = toTsQuery(List.of(keyword), 1, properties.searchMaxQueryLength());
+        if (tsquery.isEmpty() || lawIds == null || lawIds.isEmpty()) {
+            return 0;
+        }
+        return lawArticleRepository.countCurrentMatching(tsquery, lawIds);
+    }
+
+    /**
+     * 일상용어를 법령용어로 넓힌 검색 (근거 찾기 전문 검색, 7-1 추가 조회, 챗봇 조문 검색).
+     * <ol>
+     *   <li>원래 검색어로 {@link #search} 한다. 결과·순서·상한은 넓히기 전과 같다.</li>
+     *   <li>칸이 남고 사전({@link LawTermDictionary})에 맞는 일상용어가 있으면, 법령용어 + 원래 검색어로 한 번 더 검색해
+     *       아직 없는 조문만 점수 순으로 뒤에 채운다. 상한(limit)은 그대로.</li>
+     * </ol>
+     * 더한 법령용어가 원래 검색어의 결과를 밀어내지 않게 두 번 나눠 찾는다 (흔한 법령용어를 OR 로 섞으면 점수가 흐려져
+     * "위약금" 같은 정확한 조문이 상한 밖으로 밀리는 것을 실제 DB 로 확인함, 2026-11-19).
+     */
+    public List<LawArticleInfo> searchWithDailyTerms(List<String> keywords, Collection<Long> lawIds, LocalDate baseDate,
+                                                     Integer limit) {
+        List<LawArticleInfo> first = search(keywords, lawIds, baseDate, limit);
+        int size = Math.min(limit == null || limit < 1 ? properties.searchDefaultLimit() : limit, properties.searchMaxLimit());
+        if (first.size() >= size || keywords == null) {
+            return first;
+        }
+        List<String> added = lawTermDictionary.added(keywords);
+        if (added.isEmpty()) {
+            return first;
+        }
+        // 법령용어를 앞에 둔다: 검색어 수 상한(search-max-keywords)에 걸려도 더한 말이 잘리지 않게. 원래 검색어 결과는 1번에서 이미 앞에 있다
+        List<String> expanded = new ArrayList<>(added);
+        keywords.stream().filter(k -> k != null).forEach(expanded::add);
+        Set<Long> seen = first.stream().map(LawArticleInfo::lawArticleId).collect(Collectors.toSet());
+        List<LawArticleInfo> out = new ArrayList<>(first);
+        for (LawArticleInfo a : search(expanded, lawIds, baseDate, Math.min(size + first.size(), properties.searchMaxLimit()))) {
+            if (out.size() >= size) {
+                break;
+            }
+            if (seen.add(a.lawArticleId())) {
+                out.add(a);
+            }
+        }
+        return List.copyOf(out);
     }
 
     /** 문서 종류의 관련 법령 ID (핵심 법령 먼저). document_type_law 가 비어 있으면 빈 목록. */
