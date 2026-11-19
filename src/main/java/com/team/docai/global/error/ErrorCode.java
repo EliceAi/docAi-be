@@ -41,6 +41,10 @@ public enum ErrorCode {
     AI_TIMEOUT(504, "AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."),
 
     // Chat
+    CONVERSATION_NOT_FOUND(404, "대화가 없거나 내 대화가 아닙니다."),
+    CONVERSATION_DOCUMENT_MISMATCH(409, "이미 다른 계약서에 연결된 대화입니다. 새 대화를 시작해 주세요."),
+    // 비교 담당(B) 코드. 비교 구역이 아직 없어 AI 질문에 필요한 이 코드만 여기 둔다 (B 가 Comparison 구역을 만들면 옮김)
+    COMPARISON_NOT_FOUND(404, "비교가 없거나 내 비교가 아닙니다."),
 
     // Schedule
     SCHEDULE_NOT_FOUND(404, "일정을 찾을 수 없습니다."),

@@ -14,7 +14,7 @@ public enum GptFailureReason {
     TIMEOUT(true, ErrorCode.AI_TIMEOUT),
     /** 429 */
     RATE_LIMITED(true, ErrorCode.AI_REQUEST_FAILED),
-    /** 429 + error.code = insufficient_quota (사용 한도·결제 문제, 기다려도 풀리지 않음) */
+    /** 429 + error.code = insufficient_quota 또는 credit_balance_exhausted (사용 한도·결제·크레딧 소진, 기다려도 풀리지 않음) */
     QUOTA_EXCEEDED(false, ErrorCode.AI_REQUEST_FAILED),
     /** 5xx */
     SERVER_ERROR(true, ErrorCode.AI_REQUEST_FAILED),

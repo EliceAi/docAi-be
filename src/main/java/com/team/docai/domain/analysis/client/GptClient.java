@@ -58,6 +58,8 @@ public class GptClient {
 
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final int ERROR_BODY_SNIPPET = 500;
+    /** 결제·한도·크레딧 소진 오류 코드 (429 로 오지만 기다려도 풀리지 않음) */
+    private static final java.util.Set<String> QUOTA_CODES = java.util.Set.of("insufficient_quota", "credit_balance_exhausted");
     /**
      * OpenAI 오류 문구에 섞여 오는 API 키 조각 (예: 401 "Incorrect API key provided: sk-proj-abc...wxyz").
      * 앞이 단어 글자면 키가 아니다 (risk-free, task-force). 끝의 문장 마침표는 키에 넣지 않는다.
@@ -241,8 +243,8 @@ public class GptClient {
         }
         JsonNode error = errorNodeOf(result.body());
         String detail = "HTTP " + result.status() + ": " + errorMessageOf(error, result.body());
-        if (result.status() == 429 && "insufficient_quota".equals(textOrNull(error.path("code")))) {
-            // 결제·한도 문제라 기다려도 풀리지 않는다
+        if (result.status() == 429 && isQuotaError(error)) {
+            // 결제·한도·크레딧 문제라 기다려도 풀리지 않는다 (재시도하지 않음)
             throw new AttemptFailure(GptFailureReason.QUOTA_EXCEEDED, detail);
         }
         if (result.status() == 429) {
@@ -413,6 +415,16 @@ public class GptClient {
                 Thread.currentThread().interrupt();
             }
         }
+    }
+
+    /** 429 중 재시도해도 풀리지 않는 것: 오류 코드(없으면 type)가 insufficient_quota 또는 credit_balance_exhausted */
+    static boolean isQuotaError(JsonNode error) {
+        String code = textOrNull(error.path("code"));
+        String type = textOrNull(error.path("type"));
+        if (code != null) {
+            return QUOTA_CODES.contains(code);
+        }
+        return type != null && QUOTA_CODES.contains(type);
     }
 
     private JsonNode errorNodeOf(String body) {

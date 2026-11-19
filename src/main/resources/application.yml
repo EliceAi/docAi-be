@@ -53,6 +53,9 @@ docai:
     root: ${STORAGE_ROOT:./storage}
   auth:
     token-secret: ${DOCAI_TOKEN_SECRET:}
+  chat:
+    # 사용자별 1분 동안 AI 질문 수. 넘으면 429 RATE_LIMITED (명세에 숫자 없음, 분석 요청 제한과 같은 방식. 서버 메모리라 대마다 따로 셈)
+    requests-per-minute: 10
   analysis:
     # analysis.prompt_version 에 저장 (50자 이하). 1차 지시문·스키마 버전(ExtractPrompt.VERSION)과 같게 둔다.
     # 2차 지시문·스키마 버전(JudgePrompt.VERSION)을 "/" 뒤에 붙인다
