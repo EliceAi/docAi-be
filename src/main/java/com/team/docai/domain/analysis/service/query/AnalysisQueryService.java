@@ -18,7 +18,7 @@ import com.team.docai.domain.analysis.repository.AnalysisClauseRepository;
 import com.team.docai.domain.analysis.repository.AnalysisKeyTermRepository;
 import com.team.docai.domain.analysis.repository.AnalysisRepository;
 import com.team.docai.domain.analysis.repository.AnalysisResultReader;
-import com.team.docai.domain.analysis.service.query.ContractReadOnlyQuery.OwnedVersion;
+import com.team.docai.domain.analysis.service.AnalysisOwnership;
 import com.team.docai.domain.analysis.dto.AnalysisResultInfo;
 import com.team.docai.domain.analysis.dto.AnalysisResultInfo.ClauseSummary;
 import com.team.docai.domain.analysis.dto.AnalysisResultInfo.Counts;
@@ -33,6 +33,8 @@ import com.team.docai.domain.analysis.dto.AnalysisResultInfo.Result;
 import com.team.docai.domain.analysis.dto.AnalysisResultInfo.SimilarContract;
 import com.team.docai.domain.analysis.dto.ClauseDetailInfo;
 import com.team.docai.domain.analysis.dto.SampleAnalysisInfo;
+import com.team.docai.domain.contract.dto.ContractVersionInfo;
+import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.domain.law.dto.ArticleNumber;
 import com.team.docai.domain.law.dto.LawArticleInfo;
 import com.team.docai.domain.law.service.LawSearchService;
@@ -62,8 +64,10 @@ import java.util.stream.IntStream;
 /**
  * 분석 결과 조회, 조항 상세 조회, 예시 분석 조회 (8·10단계). 읽기만 한다.
  * <ul>
- *   <li>소유권: analysis → contract_version → contract.user_id. 남의 것·삭제된 계약서의 분석은 ANALYSIS_NOT_FOUND.
- *       B 메서드가 없어 지금은 {@link ContractReadOnlyQuery} 가 읽기 전용 SQL 로 확인한다 (B 메서드로 바꿀 곳).</li>
+ *   <li>소유권: analysis.version_id 로 B {@code ContractService.getVersionOwner} 를 불러 확인한다. 남의 것·삭제된 계약서의
+ *       분석은 ANALYSIS_NOT_FOUND (B 의 CONTRACT_NOT_FOUND 를 바꿈). 계약서 ID·버전 번호·제목·쪽 수·가린 곳 수도 그 반환값을 쓴다.</li>
+ *   <li>점검 깊이(checkLevel)·비슷한 계약서 정보는 아직 {@link ContractReadOnlyQuery} 의 읽기 전용 SQL 로 읽는다
+ *       (담당_연결지점 '임시 예외').</li>
  *   <li>결과·조항은 COMPLETED 분석만. 판정 중(JUDGING)·제외(excluded) 조항은 어디에도 넣지 않는다.</li>
  *   <li>근거 법령은 AI 가 인용하고 검증을 통과한(cited) 조문만. 해석 메모는 보여 주지 않는다.</li>
  *   <li>UNCERTAIN 조항은 쉬운 설명과 물어볼 것만 보여 준다. 법적 판단 문구(why_check, issue_summary)와 법령은 넣지 않는다
@@ -87,6 +91,7 @@ public class AnalysisQueryService {
     private final AnalysisClauseRefRepository analysisClauseRefRepository;
     private final AnalysisClauseRelationRepository analysisClauseRelationRepository;
     private final AnalysisResultReader reader;
+    private final ContractService contractService;
     private final ContractReadOnlyQuery contractQuery;
     private final LawSearchService lawSearchService;
     private final SampleAnalysisReader sampleReader;
@@ -99,7 +104,7 @@ public class AnalysisQueryService {
     public AnalysisResultInfo getResult(UUID userId, Long analysisId) {
         Analysis analysis = analysisRepository.findById(analysisId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
-        OwnedVersion version = findOwnedVersion(userId, analysis);
+        ContractVersionInfo version = findOwnedVersion(userId, analysis);
 
         List<AnalysisChunk> chunks = analysisChunkRepository.findByAnalysisIdOrderByChunkNoAsc(analysisId);
         int readDone = (int) chunks.stream().filter(c -> c.getStatus() == ChunkStatus.DONE).count();
@@ -176,12 +181,11 @@ public class AnalysisQueryService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.SAMPLE_NOT_FOUND));
     }
 
-    private OwnedVersion findOwnedVersion(UUID userId, Analysis analysis) {
-        return contractQuery.findOwnedVersion(userId, analysis.getVersionId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
+    private ContractVersionInfo findOwnedVersion(UUID userId, Analysis analysis) {
+        return AnalysisOwnership.requireOwnedVersion(contractService, userId, analysis.getVersionId());
     }
 
-    private Result buildResult(UUID userId, Analysis analysis, OwnedVersion version, List<AnalysisChunk> chunks) {
+    private Result buildResult(UUID userId, Analysis analysis, ContractVersionInfo version, List<AnalysisChunk> chunks) {
         Long analysisId = analysis.getAnalysisId();
         List<AnalysisClause> clauses = analysisClauseRepository
                 .findByAnalysisIdAndExcludedFalseAndVerdictNotOrderByPageNoAscClauseIdAsc(analysisId, ClauseVerdict.JUDGING);
@@ -270,7 +274,7 @@ public class AnalysisQueryService {
     }
 
     /** 자기 자신을 가리키면 보여 주지 않는다 (설계_점검 21번 이중 방어). 보관·삭제·소유 조건은 쿼리가 거른다 */
-    private SimilarContract similarContract(UUID userId, Analysis analysis, OwnedVersion version) {
+    private SimilarContract similarContract(UUID userId, Analysis analysis, ContractVersionInfo version) {
         Long similarId = analysis.getSimilarContractId();
         if (similarId == null || similarId.equals(version.contractId())) {
             return null;

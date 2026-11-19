@@ -10,6 +10,7 @@ import com.team.docai.domain.analysis.repository.AnalysisClauseRepository;
 import com.team.docai.domain.analysis.repository.AnalysisKeyTermRepository;
 import com.team.docai.domain.analysis.repository.AnalysisRepository;
 import com.team.docai.domain.analysis.repository.AnalysisResultReader;
+import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.domain.law.dto.ArticleNumber;
 import com.team.docai.domain.law.dto.LawArticleInfo;
 import com.team.docai.domain.law.service.LawSearchService;
@@ -26,11 +27,12 @@ import java.util.stream.Collectors;
 
 /**
  * 챗봇이 부르는 분석 읽기 (A 안의 기능 간 호출: chat 은 analysis Repository 를 직접 쓰지 않고 이 Service 만 부른다).
- * 소유권은 결과 조회와 같이 analysis → contract_version → contract.user_id 로 {@link ContractReadOnlyQuery} 가 확인한다
- * (임시 예외, 담당_연결지점 '임시 예외 (2026-11-18)').
+ * 소유권은 결과 조회와 같이 analysis.version_id 로 B {@code ContractService.getVersionOwner} 를 불러 확인한다.
  * <p>
- * 내 분석이 아니면 예외 대신 empty 를 돌려준다. 부르는 쪽이 같은 읽기 트랜잭션 안에서 다른 판단(대신 쓸 최신 분석 등)을
- * 이어 갈 수 있게 하기 위해서다 (트랜잭션 경계를 넘는 예외는 바깥 트랜잭션을 rollback-only 로 만든다).
+ * 분석이 없으면 empty. 분석한 버전의 계약서가 남의 것이거나 삭제됐으면 B 의 CONTRACT_NOT_FOUND 를 삼키지 않고 그대로 올린다.
+ * B 메서드가 읽기 트랜잭션에 참여한 채 던지면 그 트랜잭션은 rollback-only 가 되므로, empty 로 바꿔 예외 없이 이어 가면 커밋 때
+ * UnexpectedRollbackException(500) 이 나기 때문이다. 부르는 쪽(ChatContextReader)은 이 예외로 요청을 끝낸다
+ * (같은 계약서를 getSummary 로 확인한 뒤 동시에 삭제된 경우 = CONTRACT_NOT_FOUND, 새 대화의 남의 분석 = ANALYSIS_NOT_FOUND).
  */
 @Service
 @RequiredArgsConstructor
@@ -41,16 +43,19 @@ public class AnalysisChatQueryService {
     private final AnalysisKeyTermRepository analysisKeyTermRepository;
     private final AnalysisClauseRepository analysisClauseRepository;
     private final AnalysisResultReader reader;
-    private final ContractReadOnlyQuery contractQuery;
+    private final ContractService contractService;
     private final LawSearchService lawSearchService;
 
-    /** @return 없거나, 남의 것이거나, 삭제된 계약서의 분석이면 empty */
+    /**
+     * @return 분석이 없으면 empty
+     * @throws com.team.docai.global.error.BusinessException 남의 것·삭제된 계약서의 분석이면 B 의 CONTRACT_NOT_FOUND
+     */
     public Optional<AnalysisChatInfo> findForChat(UUID userId, Long analysisId) {
         if (userId == null || analysisId == null) {
             return Optional.empty();
         }
         return analysisRepository.findById(analysisId)
-                .flatMap(a -> contractQuery.findOwnedVersion(userId, a.getVersionId()).map(v -> toInfo(a, v.contractId())));
+                .map(a -> toInfo(a, contractService.getVersionOwner(userId, a.getVersionId()).contractId()));
     }
 
     private AnalysisChatInfo toInfo(Analysis analysis, Long contractId) {

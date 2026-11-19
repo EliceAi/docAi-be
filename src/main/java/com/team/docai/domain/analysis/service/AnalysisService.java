@@ -17,7 +17,12 @@ import com.team.docai.domain.analysis.repository.AnalysisFindingRepository;
 import com.team.docai.domain.analysis.repository.AnalysisKeyTermRepository;
 import com.team.docai.domain.analysis.repository.AnalysisRepository;
 import com.team.docai.domain.analysis.repository.ScheduleCandidateRepository;
+import com.team.docai.domain.contract.dto.ContractVersionInfo;
+import com.team.docai.domain.contract.service.ContractService;
+import com.team.docai.global.error.BusinessException;
+import com.team.docai.global.error.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +35,7 @@ import java.util.stream.IntStream;
 
 /**
  * B 가 부르는 분석 연결 메서드 (담당_연결지점.md 5번 A1~A6). 호출한 쪽 트랜잭션 안에서 부른다.
+ * A1 의 소유권 확인은 B {@code ContractService.getVersionOwner} 로 한다 (CLAUDE.md 연결 메서드 표).
  * 반환은 Info record 이고 엔티티는 내보내지 않는다.
  */
 @Service
@@ -45,16 +51,26 @@ public class AnalysisService {
     private final AnalysisClauseRepository analysisClauseRepository;
     private final AnalysisFindingRepository analysisFindingRepository;
     private final ScheduleCandidateRepository scheduleCandidateRepository;
+    /** B 가 ContractService 에서 이 서비스(A2·A3)를 부르게 되면 생성자 순환이 생기므로 지연 조회한다 */
+    private final ObjectProvider<ContractService> contractService;
 
     /**
-     * A1 분석 참조 확인. 내 분석이 아니거나 계약서가 삭제됐으면 ANALYSIS_NOT_FOUND 를 던져야 한다.
-     * 소유권은 analysis → contract_version → contract.user_id 로 확인하는데 contract_version·contract 는 B 테이블이고,
-     * versionId 로 계약서·소유자를 확인하는 B 메서드가 아직 없다. 소유권 검사 없이 값을 돌려주면 남의 분석이 열리므로
-     * B 메서드가 생길 때까지 막아 둔다.
+     * A1 분석 참조 확인 (일정 후보 조회 등 경로에 analysisId 가 오는 B API 가 부른다). 호출한 쪽 트랜잭션 안에서 부른다.
+     * ① 분석이 없으면 ANALYSIS_NOT_FOUND ② B {@code ContractService.getVersionOwner} 로 분석한 버전의 계약서가 내 것이고
+     * 삭제되지 않았는지 확인한다. B 가 CONTRACT_NOT_FOUND 를 던지면(남의 것·삭제됨) ANALYSIS_NOT_FOUND 로 바꿔 던진다.
+     * 완료 여부는 판단하지 않고 status 만 담는다. COMPLETED 가 아니면 부르는 쪽이 CONTRACT_NOT_ANALYZED 등으로 처리한다
+     * (일정 후보 조회 명세 에러 표의 409 는 그 API 의 판단).
      */
     public AnalysisRefInfo getRef(UUID userId, Long analysisId) {
-        throw new UnsupportedOperationException(
-                "getRef: 버전의 계약서·소유자를 확인할 B 메서드(ContractService)가 아직 없음");
+        if (userId == null || analysisId == null) {
+            throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
+        }
+        Analysis analysis = analysisRepository.findById(analysisId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
+        ContractVersionInfo version = AnalysisOwnership.requireOwnedVersion(
+                contractService.getObject(), userId, analysis.getVersionId());
+        return new AnalysisRefInfo(analysis.getAnalysisId(), analysis.getVersionId(), version.contractId(),
+                analysis.getStatus().name(), analysis.getCompletedAt());
     }
 
     /**

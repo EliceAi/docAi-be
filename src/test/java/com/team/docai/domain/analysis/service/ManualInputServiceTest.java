@@ -9,8 +9,8 @@ import com.team.docai.domain.analysis.entity.KeyTermSource;
 import com.team.docai.domain.analysis.entity.KeyTermState;
 import com.team.docai.domain.analysis.repository.AnalysisKeyTermRepository;
 import com.team.docai.domain.analysis.repository.AnalysisRepository;
-import com.team.docai.domain.analysis.service.query.ContractReadOnlyQuery;
-import com.team.docai.domain.analysis.service.query.ContractReadOnlyQuery.OwnedVersion;
+import com.team.docai.domain.contract.dto.ContractVersionInfo;
+import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.global.error.BusinessException;
 import com.team.docai.global.error.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,20 +42,20 @@ class ManualInputServiceTest {
 
     AnalysisRepository analysisRepository = mock(AnalysisRepository.class);
     AnalysisKeyTermRepository keyTermRepository = mock(AnalysisKeyTermRepository.class);
-    ContractReadOnlyQuery contractQuery = mock(ContractReadOnlyQuery.class);
+    ContractService contractService = mock(ContractService.class);
     Analysis analysis = mock(Analysis.class);
 
     ManualInputService service;
 
     @BeforeEach
     void setUp() {
-        service = new ManualInputService(analysisRepository, keyTermRepository, contractQuery);
+        service = new ManualInputService(analysisRepository, keyTermRepository, contractService);
         when(analysis.getAnalysisId()).thenReturn(ANALYSIS_ID);
         when(analysis.getVersionId()).thenReturn(VERSION_ID);
         when(analysis.getStatus()).thenReturn(AnalysisStatus.COMPLETED);
         when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.of(analysis));
-        when(contractQuery.findOwnedVersion(USER, VERSION_ID))
-                .thenReturn(Optional.of(new OwnedVersion(1L, 1, 2, "근로계약서", 0)));
+        when(contractService.getVersionOwner(USER, VERSION_ID))
+                .thenReturn(new ContractVersionInfo(1L, 1, 2, "근로계약서", 0));
     }
 
     @Test
@@ -95,12 +95,13 @@ class ManualInputServiceTest {
         when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.empty());
 
         assertCode(ErrorCode.ANALYSIS_NOT_FOUND);
-        verify(contractQuery, never()).findOwnedVersion(any(), anyLong());
+        verify(contractService, never()).getVersionOwner(any(), anyLong());
     }
 
     @Test
     void 남의_것이거나_삭제된_계약서의_분석이면_ANALYSIS_NOT_FOUND() {
-        when(contractQuery.findOwnedVersion(USER, VERSION_ID)).thenReturn(Optional.empty());
+        when(contractService.getVersionOwner(USER, VERSION_ID))
+                .thenThrow(new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
         // 남의 분석이면 상태와 항목을 보지 않는다 (있는지 없는지 알려 주지 않게)
         when(analysis.getStatus()).thenReturn(AnalysisStatus.ANALYZING);
 

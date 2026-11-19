@@ -14,8 +14,11 @@ import com.team.docai.domain.analysis.repository.AnalysisClauseRepository;
 import com.team.docai.domain.analysis.repository.AnalysisKeyTermRepository;
 import com.team.docai.domain.analysis.repository.AnalysisRepository;
 import com.team.docai.domain.analysis.repository.AnalysisResultReader;
-import com.team.docai.domain.analysis.service.query.ContractReadOnlyQuery.OwnedVersion;
+import com.team.docai.domain.contract.dto.ContractVersionInfo;
+import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.domain.law.service.LawSearchService;
+import com.team.docai.global.error.BusinessException;
+import com.team.docai.global.error.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +29,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -51,6 +55,7 @@ class AnalysisQueryServiceTest {
     AnalysisClauseRefRepository refRepository = mock(AnalysisClauseRefRepository.class);
     AnalysisClauseRelationRepository relationRepository = mock(AnalysisClauseRelationRepository.class);
     AnalysisResultReader reader = mock(AnalysisResultReader.class);
+    ContractService contractService = mock(ContractService.class);
     ContractReadOnlyQuery contractQuery = mock(ContractReadOnlyQuery.class);
     LawSearchService lawSearchService = mock(LawSearchService.class);
     SampleAnalysisReader sampleReader = mock(SampleAnalysisReader.class);
@@ -60,7 +65,7 @@ class AnalysisQueryServiceTest {
     @BeforeEach
     void setUp() {
         service = new AnalysisQueryService(analysisRepository, chunkRepository, keyTermRepository, clauseRepository,
-                refRepository, relationRepository, reader, contractQuery, lawSearchService, sampleReader,
+                refRepository, relationRepository, reader, contractService, contractQuery, lawSearchService, sampleReader,
                 Clock.system(ZoneId.of("Asia/Seoul")));
         Analysis analysis = mock(Analysis.class);
         when(analysis.getAnalysisId()).thenReturn(ANALYSIS_ID);
@@ -68,8 +73,8 @@ class AnalysisQueryServiceTest {
         when(analysis.getStatus()).thenReturn(AnalysisStatus.COMPLETED);
         when(analysis.getDocumentTypeCode()).thenReturn("EMPLOYMENT");
         when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.of(analysis));
-        when(contractQuery.findOwnedVersion(USER, VERSION_ID))
-                .thenReturn(Optional.of(new OwnedVersion(1L, 1, 2, "근로계약서", 0)));
+        when(contractService.getVersionOwner(USER, VERSION_ID))
+                .thenReturn(new ContractVersionInfo(1L, 1, 2, "근로계약서", 0));
         when(contractQuery.findSimilarContract(any(), anyLong())).thenReturn(Optional.empty());
         when(chunkRepository.findByAnalysisIdOrderByChunkNoAsc(ANALYSIS_ID)).thenReturn(List.of());
         when(keyTermRepository.findByAnalysisIdOrderBySortOrderAsc(ANALYSIS_ID)).thenReturn(List.of());
@@ -79,6 +84,48 @@ class AnalysisQueryServiceTest {
         when(reader.findVisibleClauses(anyLong(), anyCollection())).thenReturn(List.of());
         when(relationRepository.findByClauseId(anyLong())).thenReturn(List.of());
         when(refRepository.findByClauseIdOrderByRefIdAsc(anyLong())).thenReturn(List.of());
+    }
+
+    @Test
+    void 결과_조회는_B_getVersionOwner_의_계약서_ID_버전_번호_제목_쪽_수_가린_곳_수를_쓴다() {
+        when(contractService.getVersionOwner(USER, VERSION_ID))
+                .thenReturn(new ContractVersionInfo(31L, 3, 5, "카페 근로계약서", 4));
+        when(clauseRepository.findByAnalysisIdAndExcludedFalseAndVerdictNotOrderByPageNoAscClauseIdAsc(ANALYSIS_ID,
+                com.team.docai.domain.analysis.entity.ClauseVerdict.JUDGING)).thenReturn(List.of());
+
+        var info = service.getResult(USER, ANALYSIS_ID);
+
+        assertThat(info.contractId()).isEqualTo(31L);
+        assertThat(info.version()).isEqualTo(3);
+        assertThat(info.result().title()).isEqualTo("카페 근로계약서");
+        assertThat(info.result().coverage().pageCount()).isEqualTo(5);
+        assertThat(info.result().coverage().maskedCount()).isEqualTo(4);
+        verify(contractService).getVersionOwner(USER, VERSION_ID);
+    }
+
+    @Test
+    void 결과_조회와_조항_상세는_B가_CONTRACT_NOT_FOUND면_ANALYSIS_NOT_FOUND() {
+        when(contractService.getVersionOwner(USER, VERSION_ID))
+                .thenThrow(new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+
+        assertThatThrownBy(() -> service.getResult(USER, ANALYSIS_ID))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ANALYSIS_NOT_FOUND));
+        assertThatThrownBy(() -> service.getClause(USER, ANALYSIS_ID, 1L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ANALYSIS_NOT_FOUND));
+        verify(chunkRepository, never()).findByAnalysisIdOrderByChunkNoAsc(anyLong());
+        verify(reader, never()).findVisibleClause(anyLong(), anyLong());
+    }
+
+    @Test
+    void 결과_조회는_분석이_없으면_B를_부르지_않고_ANALYSIS_NOT_FOUND() {
+        when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getResult(USER, ANALYSIS_ID))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ANALYSIS_NOT_FOUND));
+        verify(contractService, never()).getVersionOwner(any(), anyLong());
     }
 
     @Test
