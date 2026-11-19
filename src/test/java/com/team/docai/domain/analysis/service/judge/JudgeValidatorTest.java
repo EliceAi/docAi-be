@@ -273,4 +273,22 @@ class JudgeValidatorTest {
         assertThat(last.needMore()).isEmpty();
         assertThat(types(last)).contains("NEED_MORE_IGNORED");
     }
+
+    @Test
+    void 단정_표현_문장을_지울_때_날짜와_소수점은_나누지_않는다() {
+        java.util.List<java.util.Map<String, Object>> log = new java.util.ArrayList<>();
+        assertThat(JudgeValidator.withoutAssertions(JudgeValidator.STAGE_JUDGE,
+                "계약 시작일은 2026.11.12이고 인상률은 10.5%예요. 이 조항은 무효예요.", "clause c1.whyCheck", log))
+                .isEqualTo("계약 시작일은 2026.11.12이고 인상률은 10.5%예요.");
+        assertThat(log).hasSize(1);
+    }
+
+    @Test
+    void 단정_표현_문장을_지울_때_붙은_마침표는_나누고_줄바꿈은_줄바꿈으로_잇는다() {
+        java.util.List<java.util.Map<String, Object>> log = new java.util.ArrayList<>();
+        assertThat(JudgeValidator.withoutAssertions(JudgeValidator.STAGE_JUDGE,
+                "확인이 필요해요.그리고 이 조항은 무효예요.\n1. 이 계약은 불법이에요.\n교육비를 물어보세요.", "clause c1.whyCheck", log))
+                .isEqualTo("확인이 필요해요.\n교육비를 물어보세요.");
+        assertThat(log).hasSize(2);
+    }
 }

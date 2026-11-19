@@ -3,6 +3,7 @@ package com.team.docai.domain.analysis.service.judge;
 import com.team.docai.domain.analysis.dto.JudgeResponse;
 import com.team.docai.domain.analysis.entity.AnalysisClause;
 import com.team.docai.domain.analysis.entity.ClauseVerdict;
+import com.team.docai.domain.analysis.service.AssertionText;
 import com.team.docai.domain.analysis.service.ClauseKeyText;
 import com.team.docai.global.util.TextTruncator;
 
@@ -40,11 +41,7 @@ final class JudgeValidator {
     static final String STAGE_JUDGE_MORE = "JUDGE_MORE";
 
     /** 단정 표현. 지시문에서 쓰지 말라고 했지만 지켜진다는 보장이 없어 서버가 한 번 더 거른다 */
-    static final Pattern ASSERTION = Pattern.compile(
-            "무효|불법|위법|효력이\\s*없|"
-                    + "위반(?:이다|입니다|이에요|이야|임|된다|됩니다|돼요|되요|돼|한다|합니다|해요|하는\\s*조항)|"
-                    + "서명(?:해|하셔)도\\s*(?:된다|됩니다|돼요|되요|돼|괜찮)");
-    private static final Pattern SENTENCE = Pattern.compile("[^.!?\\n]+[.!?]*");
+    static final Pattern ASSERTION = AssertionText.ASSERTION;
     static final String UNKNOWN_CLAUSE_NAME = "관련 조항";
 
     static final int MAX_ASK = 3;
@@ -241,28 +238,9 @@ final class JudgeValidator {
      * 지운 문장은 log 에 남긴다 (설계: 지운 내용은 validation_log_json 에 기록).
      */
     static String withoutAssertions(String stage, String text, String target, List<Map<String, Object>> log) {
-        if (text == null || text.isBlank()) {
-            return null;
-        }
-        if (!ASSERTION.matcher(text).find()) {
-            return text.trim();
-        }
-        List<String> kept = new ArrayList<>();
-        Matcher sentence = SENTENCE.matcher(text);
-        while (sentence.find()) {
-            String s = sentence.group().trim();
-            if (s.isEmpty()) {
-                continue;
-            }
-            Matcher m = ASSERTION.matcher(s);
-            if (m.find()) {
-                log.add(entry(stage, "ASSERTION_REMOVED", target, "'" + m.group() + "': "
-                        + TextTruncator.truncate(s, LOG_TEXT_MAX)));
-            } else {
-                kept.add(s);
-            }
-        }
-        return kept.isEmpty() ? null : String.join(" ", kept);
+        // 문장 나누기·지우기는 챗봇 검증과 같은 AssertionText 를 쓴다
+        return AssertionText.removeSentences(text, (found, sentence) -> log.add(entry(stage, "ASSERTION_REMOVED", target,
+                "'" + found + "': " + TextTruncator.truncate(sentence, LOG_TEXT_MAX))));
     }
 
     /** 화면에 쓸 조항 이름: 조 번호, 없으면 "「제목」 조항", 둘 다 없으면 "관련 조항" */

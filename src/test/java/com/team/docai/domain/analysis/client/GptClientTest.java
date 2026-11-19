@@ -630,6 +630,38 @@ class GptClientTest {
     }
 
     @Test
+    void 요청_429_credit_balance_exhausted도_QUOTA_EXCEEDED로_재시도하지_않고_503() {
+        server.expect(ExpectedCount.once(), requestTo(URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"error\":{\"message\":\"Your credit balance is exhausted\",\"type\":\"insufficient_quota\",\"code\":\"credit_balance_exhausted\"}}"));
+
+        GptCallException e = callExpectingFailure();
+
+        server.verify();
+        assertThat(e.getReason()).isEqualTo(GptFailureReason.QUOTA_EXCEEDED);
+        assertThat(e.getErrorCode()).isEqualTo(com.team.docai.global.error.ErrorCode.AI_REQUEST_FAILED);
+        assertThat(e.getErrorCode().getStatus()).isEqualTo(503);
+        assertThat(sleeps).isEmpty();
+        assertThat(logs(1)).extracting(AiCallLogCommand::status).containsExactly(AiCallStatus.FAILED);
+    }
+
+    @Test
+    void 요청_429_다른_코드는_여전히_RATE_LIMITED로_1회_재시도한다() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"error\":{\"message\":\"Rate limit reached\",\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}"));
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"error\":{\"message\":\"Rate limit reached\",\"code\":\"rate_limit_exceeded\"}}"));
+
+        GptCallException e = callExpectingFailure();
+
+        server.verify();
+        assertThat(e.getReason()).isEqualTo(GptFailureReason.RATE_LIMITED);
+        assertThat(sleeps).hasSize(1);
+    }
+
+    @Test
     void 서버_오류_5xx도_Retry_After를_따른다() throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.RETRY_AFTER, "7");
