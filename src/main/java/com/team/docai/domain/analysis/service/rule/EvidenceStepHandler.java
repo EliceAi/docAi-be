@@ -32,7 +32,8 @@ import java.util.List;
  * <ol>
  *   <li>꼬리표 → 조문 매핑 (issue_tag_article 우선순위)</li>
  *   <li>AI 법령 힌트(law_hints)를 LawSearchService 로 확인해 DB 에 있는 조문만</li>
- *   <li>칸이 남으면 전문 검색(search_keywords, 문서 종류별 관련 법령 안)</li>
+ *   <li>칸이 남으면 전문 검색(search_keywords, 문서 종류별 관련 법령 안). 그래도 남으면 일상용어를 법령용어로 넓혀 채움
+ *       (LawSearchService.searchWithDailyTerms)</li>
  *   <li>꼬리표의 해석 메모 1개</li>
  * </ol>
  * 조문은 기준일(law_base_date, 없으면 분석일)에 시행 중인 행. 현행본만 적재해 대신 쓴 행은 ref_text 앞에 표시한다.
@@ -108,7 +109,8 @@ public class EvidenceStepHandler implements AnalysisStepHandler {
         }
         List<String> keywords = clause.getSearchKeywords();
         if (collector.wantsMoreLaws() && keywords != null && !keywords.isEmpty()) {
-            List<LawArticleInfo> found = lawSearchService.search(keywords, lawIds, baseDate, MAX_REFS_PER_CLAUSE);
+            List<LawArticleInfo> found = lawSearchService.searchWithDailyTerms(keywords, lawIds, baseDate,
+                    MAX_REFS_PER_CLAUSE);
             collector.addLaws(RefFoundBy.SEARCH, found);
         }
         return collector.drafts();

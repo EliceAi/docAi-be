@@ -294,4 +294,46 @@ class LawLoaderTest {
         assertThat(server.received()).isEmpty();
         verify(writer, never()).saveVersion(any(), any(), eq(null));
     }
+
+    @Test
+    void 일부만_적재할_때_대상이_아닌_법령명이면_API_를_부르기_전에_거절한다() {
+        server.handler(q -> new FakeLawServer.Reply(500, "부르면 안 됨"));
+
+        assertThatThrownBy(() -> loader(3, false).load(java.util.Set.of("없는법 시행령")))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("없는법 시행령");
+        assertThat(server.received()).isEmpty();
+    }
+
+    @Test
+    void 시행령_2개를_상위_법령과_근로계약서_관련_법령_비핵심으로_둔다() {
+        assertThat(LawCatalog.TARGETS).contains(
+                new LawCatalog.Target("최저임금법 시행령", "최저임금법", "최저임금법"),
+                new LawCatalog.Target("근로자퇴직급여 보장법 시행령", "근로자퇴직급여 보장법", "근로자퇴직급여 보장법"));
+        assertThat(LawCatalog.DOCUMENT_TYPE_LAWS).contains(
+                new LawCatalog.DocumentTypeLawSeed("EMPLOYMENT", "최저임금법 시행령", false),
+                new LawCatalog.DocumentTypeLawSeed("EMPLOYMENT", "근로자퇴직급여 보장법 시행령", false));
+    }
+
+    @Test
+    void 일부만_적재하면_대상_법령의_목록_본문만_부르고_그_법령만_저장한다() {
+        String decreeBody = LawTestSupport.resource("labor_standards_decree_body_sample.json");
+        server.handler(q -> new FakeLawServer.Reply(200, q.startsWith("lawSearch") ? LIST : decreeBody));
+        // 실제 적재 경로(load(Set))는 호출 간격 1초 이상만 받는다
+        LawProperties props = LawTestSupport.properties(server.baseUrl(), Duration.ofSeconds(1), Duration.ofSeconds(1), 3, false);
+        LawLoader loader = new LawLoader(LawTestSupport.client(props, LawTestSupport.FAKE_OC), cache,
+                new LawResponseParser(new ObjectMapper()), writer, props);
+
+        LawLoadReport report = loader.load(java.util.Set.of("근로기준법시행령"));
+
+        assertThat(server.received()).extracting(FakeLawServer.Received::path).containsExactly("lawSearch.do", "lawService.do");
+        assertThat(server.received().get(0).query()).contains("query=근로기준법");
+        assertThat(server.received().get(1).query()).contains("MST=270551");
+        assertThat(report.laws()).extracting(LawLoadReport.LawResult::name).containsExactly("근로기준법 시행령");
+        org.mockito.ArgumentCaptor<LawListItem> saved = org.mockito.ArgumentCaptor.forClass(LawListItem.class);
+        verify(writer, org.mockito.Mockito.times(1)).saveVersion(saved.capture(), any(), any());
+        assertThat(saved.getValue().name()).isEqualTo("근로기준법 시행령");
+        verify(writer, never()).isLoaded(org.mockito.ArgumentMatchers.argThat(i -> !"근로기준법 시행령".equals(i.name())));
+        verify(writer).linkParent("근로기준법 시행령", "근로기준법");
+        verify(writer, never()).linkParent(org.mockito.ArgumentMatchers.argThat(n -> !"근로기준법 시행령".equals(n)), anyString());
+    }
 }

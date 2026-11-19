@@ -60,6 +60,15 @@ public interface LawArticleRepository extends JpaRepository<LawArticle, Long> {
                              @Param("minScore") double minScore,
                              @Param("limit") int limit);
 
+    /** 지금 시행 중인(effective_to 없음) 행 중 tsquery 에 맞는 행 수 (일상용어 사전을 만들 때 법령용어가 DB 에 있는지 본다). */
+    @Query(value = """
+            SELECT count(*) FROM law_article a
+            WHERE a.search_vector @@ to_tsquery('simple', :tsquery)
+              AND a.effective_to IS NULL
+              AND a.law_id IN (:lawIds)
+            """, nativeQuery = true)
+    long countCurrentMatching(@Param("tsquery") String tsquery, @Param("lawIds") Collection<Long> lawIds);
+
     /** 조문 번호로 직접 찾기 (기준일에 유효한 행, 항 순서). */
     @Query(value = """
             SELECT a.law_article_id

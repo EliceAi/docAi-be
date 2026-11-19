@@ -103,7 +103,7 @@ class ChatPipelineTest {
                 .thenReturn(Optional.of(new AnalysisSummaryInfo(ANALYSIS, null, COMPLETED_AT, 1, 0, 2)));
         when(analysisQuery.findForChat(USER, ANALYSIS)).thenReturn(Optional.of(completedAnalysis()));
         when(lawSearch.findLawIds(anyString())).thenReturn(List.of());
-        when(lawSearch.search(any(), anyCollection(), any(), any())).thenReturn(List.of());
+        when(lawSearch.searchWithDailyTerms(any(), anyCollection(), any(), any())).thenReturn(List.of());
         when(conversations.save(any())).thenAnswer(inv -> {
             Conversation c = inv.getArgument(0);
             ReflectionTestUtils.setField(c, "conversationId", 3L);
@@ -302,7 +302,7 @@ class ChatPipelineTest {
     @Test
     void 질문_낱말로_찾은_조문도_근거로_보내고_인용하면_LAW_DB에_넣는다() {
         when(lawSearch.findLawIds("EMPLOYMENT")).thenReturn(List.of(1L));
-        when(lawSearch.search(any(), anyCollection(), isNull(), eq(ChatContextReader.MAX_SEARCH_SOURCES))).thenReturn(List.of(
+        when(lawSearch.searchWithDailyTerms(any(), anyCollection(), isNull(), eq(ChatContextReader.MAX_SEARCH_SOURCES))).thenReturn(List.of(
                 new LawArticleInfo(6001L, 1L, "최저임금법", 6, 0, 1, "최저임금의 효력", "사용자는 최저임금액 이상의 임금을 지급하여야 한다.",
                         LocalDate.of(2025, 1, 1), null, 0.5, false)));
         gptReturns(gptAnswer("ANSWERED", "최저임금법 제6조에 따라 시급을 확인해 보세요.", List.of("L2"),

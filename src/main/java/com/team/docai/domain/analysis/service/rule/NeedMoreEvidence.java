@@ -17,7 +17,8 @@ import java.util.List;
 /**
  * 7-1 추가 조회: 2차가 needMore 로 요청한 조항에 6단계와 같은 방법({@link EvidenceCollector})으로 조문을 더 찾아 붙인다.
  * <ul>
- *   <li>검색어(searchKeywords, 그다음 want)로 문서 종류별 관련 법령 안에서 전문 검색. 기준일은 6단계와 같다.</li>
+ *   <li>검색어(searchKeywords, 그다음 want)로 문서 종류별 관련 법령 안에서 전문 검색. 기준일은 6단계와 같다.
+ *       6단계처럼 칸이 남으면 일상용어를 법령용어로 넓혀 채운다 (LawSearchService.searchWithDailyTerms).</li>
  *   <li>이미 붙은 근거와 같은 조문은 건너뛴다. 새 ID 는 기존 가장 큰 번호 다음 (L7, L8 ...). found_by = NEED_MORE, cited = false.</li>
  *   <li>새로 붙이는 수는 조항당 {@link #MAX_NEW_REFS}개까지 (2차에 다시 보내는 글이 너무 길어지지 않게).</li>
  * </ul>
@@ -51,7 +52,8 @@ public class NeedMoreEvidence {
         EvidenceCollector collector = new EvidenceCollector(clauseId, existing, List.of(), baseDate,
                 existing.size() + MAX_NEW_REFS);
         // 이미 붙은 조문이 섞여 나올 수 있어 넉넉히 받아 앞에서부터 채운다
-        List<LawArticleInfo> found = lawSearchService.search(query, lawIds, baseDate, existing.size() + MAX_NEW_REFS);
+        List<LawArticleInfo> found = lawSearchService.searchWithDailyTerms(query, lawIds, baseDate,
+                existing.size() + MAX_NEW_REFS);
         collector.addLaws(RefFoundBy.NEED_MORE, found);
         List<RefDraft> drafts = collector.drafts();
         if (!drafts.isEmpty()) {

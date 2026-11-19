@@ -15,7 +15,8 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * 법제처 응답 원본 캐시. 목록은 list/{검색어}_p{쪽}.json, 본문은 body/{MST}.json.
+ * 법제처 응답 원본 캐시. 목록은 list/{검색어}_p{쪽}.json, 본문은 body/{MST}.json,
+ * 일상용어-법령용어 연계는 daily-term/{일상용어}.json.
  * MST(법령일련번호)는 개정마다 바뀌므로 본문 캐시는 개정본 단위로 고정된다.
  * 저장 전에 인증값을 가린 본문만 받는다 (LawApiClient 가 가림).
  */
@@ -62,6 +63,19 @@ public class LawApiCache {
 
     public void writeBody(String mst, String body) {
         write(bodyPath(mst), body);
+    }
+
+    /** 일상용어-법령용어 연계 응답. 키는 일상용어. */
+    public Optional<String> readDailyTerm(String dailyTerm) {
+        return read(dailyTermPath(dailyTerm));
+    }
+
+    public void writeDailyTerm(String dailyTerm, String body) {
+        write(dailyTermPath(dailyTerm), body);
+    }
+
+    Path dailyTermPath(String dailyTerm) {
+        return root.resolve("daily-term").resolve(safe(dailyTerm) + ".json");
     }
 
     Path listPath(String query, int page) {

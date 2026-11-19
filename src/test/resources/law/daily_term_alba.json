@@ -1,0 +1,57 @@
+{"dlytrmRltService": {
+    "검색결과개수": "1",
+    "키워드": "알바",
+    "target": "dlytrmRlt",
+    "일상용어": {
+        "id": "1",
+        "일상용어명": "알바",
+        "연계용어": [
+            {
+                "용어간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRlt&type=XML&MST=1283861",
+                "id": "1",
+                "용어관계": "동의어",
+                "법령용어명": "단시간근로",
+                "용어관계코드": "140301",
+                "비고": "",
+                "조문간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRltJo&type=XML&MST=1283861"
+            },
+            {
+                "용어간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRlt&type=XML&MST=294501",
+                "id": "2",
+                "용어관계": "연관어",
+                "법령용어명": "단시간근로자",
+                "용어관계코드": "140305",
+                "비고": "",
+                "조문간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRltJo&type=XML&MST=294501"
+            },
+            {
+                "용어간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRlt&type=XML&MST=1312775",
+                "id": "3",
+                "용어관계": "동의어",
+                "법령용어명": "부업",
+                "용어관계코드": "140301",
+                "비고": "",
+                "조문간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRltJo&type=XML&MST=1312775"
+            },
+            {
+                "용어간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRlt&type=XML&MST=18673",
+                "id": "4",
+                "용어관계": "상위어",
+                "법령용어명": "종사자",
+                "용어관계코드": "140303",
+                "비고": "",
+                "조문간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRltJo&type=XML&MST=18673"
+            },
+            {
+                "용어간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRlt&type=XML&MST=14931",
+                "id": "5",
+                "용어관계": "상위어",
+                "법령용어명": "종업원",
+                "용어관계코드": "140303",
+                "비고": "",
+                "조문간관계링크": "/DRF/lawService.do?OC=***&target=lstrmRltJo&type=XML&MST=14931"
+            }
+        ],
+        "출처": ""
+    }
+}}
