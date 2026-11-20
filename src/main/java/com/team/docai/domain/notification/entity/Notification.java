@@ -11,6 +11,12 @@ public class Notification extends BaseEntity {
   notification.type=type;notification.title=title;notification.subTitle=subTitle;notification.read=false;
   return notification;
  }
+ public static Notification scheduleDue(UUID userId,Long scheduleId,int dueOffset,LocalDate dueDate,String title,String subTitle){
+  var notification=new Notification();notification.userId=userId;notification.scheduleId=scheduleId;
+  notification.type="SCHEDULE_DUE";notification.dueOffset=dueOffset;notification.dueDate=dueDate;
+  notification.title=title;notification.subTitle=subTitle;notification.read=false;
+  return notification;
+ }
  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long notificationId;
  private UUID userId;
  private String type;

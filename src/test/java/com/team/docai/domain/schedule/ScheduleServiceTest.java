@@ -1,4 +1,7 @@
 package com.team.docai.domain.schedule;
+import com.team.docai.domain.analysis.dto.AnalysisRefInfo;
+import com.team.docai.domain.analysis.dto.ScheduleCandidateInfo;
+import com.team.docai.domain.analysis.service.AnalysisService;
 import com.team.docai.domain.schedule.dto.*;
 import com.team.docai.domain.schedule.entity.Schedule;
 import com.team.docai.domain.schedule.entity.ScheduleSource;
@@ -20,9 +23,11 @@ class ScheduleServiceTest {
  final UUID user=UUID.randomUUID();
  final ScheduleRepository repo=mock(ScheduleRepository.class);
  final ContractService contracts=mock(ContractService.class);
+ final AnalysisService analysis=mock(AnalysisService.class);
  final NotificationService notifications=mock(NotificationService.class);
+ final ObjectProvider<AnalysisService> analysisProvider=mock(ObjectProvider.class);
  final ObjectProvider<NotificationService> notifProvider=mock(ObjectProvider.class);
- final ScheduleService service=new ScheduleService(repo,contracts,Clock.fixed(Instant.parse("2026-11-17T15:01:00Z"),ZoneOffset.UTC),null,notifProvider,null);
+ final ScheduleService service=new ScheduleService(repo,contracts,Clock.fixed(Instant.parse("2026-11-17T15:01:00Z"),ZoneOffset.UTC),analysisProvider,notifProvider);
  Schedule row(Long contract) throws Exception {
   var c=Schedule.class.getDeclaredConstructor();c.setAccessible(true);var s=c.newInstance();
   ReflectionTestUtils.setField(s,"scheduleId",1L);ReflectionTestUtils.setField(s,"contractId",contract);ReflectionTestUtils.setField(s,"date",LocalDate.of(2026,11,18));return s;
@@ -57,5 +62,26 @@ class ScheduleServiceTest {
   assertEquals("MANUAL",updated.source());
   assertNull(updated.location());
   verify(notifications).deleteUnreadForScheduleDate(1L,LocalDate.of(2026,11,18));
+ }
+ @Test void getCandidatesUsesAnalysisGetRefDirectly() {
+  when(analysisProvider.getIfAvailable()).thenReturn(analysis);
+  when(analysis.getRef(user,100L)).thenReturn(new AnalysisRefInfo(100L,10L,5L,"COMPLETED",OffsetDateTime.parse("2026-11-17T15:00:00Z")));
+  when(contracts.getSummary(user,5L)).thenReturn(new ContractSummaryInfo(5L,"원룸 계약서",false,100L));
+  when(analysis.getScheduleCandidates(100L)).thenReturn(List.of(
+   new ScheduleCandidateInfo(1L,"MOVE_IN","입주일",LocalDate.of(2026,12,1),"WRITTEN","1쪽 제2조",1,null,true),
+   new ScheduleCandidateInfo(2L,"BALANCE","잔금일",null,"WRITTEN",null,null,null,false)
+  ));
+  var result=service.getCandidates(user,100L);
+  assertEquals(5L,result.contractId());
+  assertEquals("원룸 계약서",result.contractTitle());
+  assertEquals(1,result.candidates().size());
+  assertEquals(1,result.missing().size());
+  assertEquals("계약서에 없어요.",result.missing().get(0).message());
+
+  when(analysis.getRef(user,101L)).thenReturn(new AnalysisRefInfo(101L,10L,5L,"ANALYZING",null));
+  assertEquals(ErrorCode.CONTRACT_NOT_ANALYZED,assertThrows(BusinessException.class,()->service.getCandidates(user,101L)).getErrorCode());
+
+  when(analysis.getRef(user,102L)).thenThrow(new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
+  assertEquals(ErrorCode.ANALYSIS_NOT_FOUND,assertThrows(BusinessException.class,()->service.getCandidates(user,102L)).getErrorCode());
  }
 }
