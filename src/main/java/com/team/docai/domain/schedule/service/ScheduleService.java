@@ -12,12 +12,12 @@ import com.team.docai.global.error.*;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 @Service @Transactional(readOnly=true)
@@ -27,13 +27,12 @@ public class ScheduleService {
  private final Clock clock;
  private final ObjectProvider<AnalysisService> analysisProvider;
  private final ObjectProvider<NotificationService> notificationProvider;
- private final ObjectProvider<JdbcTemplate> jdbcProvider;
  public ScheduleService(ScheduleRepository schedules,ContractService contracts,Clock clock){
-  this(schedules,contracts,clock,null,null,null);
+  this(schedules,contracts,clock,null,null);
  }
  @Autowired
- public ScheduleService(ScheduleRepository schedules,ContractService contracts,Clock clock,ObjectProvider<AnalysisService> analysisProvider,ObjectProvider<NotificationService> notificationProvider,ObjectProvider<JdbcTemplate> jdbcProvider){
-  this.schedules=schedules;this.contracts=contracts;this.clock=clock;this.analysisProvider=analysisProvider;this.notificationProvider=notificationProvider;this.jdbcProvider=jdbcProvider;
+ public ScheduleService(ScheduleRepository schedules,ContractService contracts,Clock clock,ObjectProvider<AnalysisService> analysisProvider,ObjectProvider<NotificationService> notificationProvider){
+  this.schedules=schedules;this.contracts=contracts;this.clock=clock;this.analysisProvider=analysisProvider;this.notificationProvider=notificationProvider;
  }
  public int countForContract(UUID userId,Long contractId){return Math.toIntExact(schedules.countByUserIdAndContractId(userId,contractId));}
  public List<SavedScheduleInfo> listForContract(UUID userId,Long contractId){
@@ -43,6 +42,29 @@ public class ScheduleService {
  }
  public List<Schedule> findEntitiesForContract(UUID userId,Long contractId){
   return schedules.findByUserIdAndContractIdOrderByDateAscScheduleIdAsc(userId,contractId);
+ }
+ public List<ScheduleDueTargetInfo> findDueTargets(Collection<LocalDate> dates){
+  if(dates==null||dates.isEmpty())return List.of();
+  return schedules.findByDateInOrderByDateAscScheduleIdAsc(dates).stream()
+   .map(s->new ScheduleDueTargetInfo(s.getScheduleId(),s.getUserId(),s.getContractId(),s.getDateKind(),s.getTitle(),s.getDate())).toList();
+ }
+ @Transactional
+ public boolean createDueNotificationIfMatches(
+  Long scheduleId,
+  LocalDate expectedDate,
+  int dueOffset,
+  BiFunction<String,String,String> titleFormatter,
+  String subTitle
+ ){
+  if(scheduleId==null||expectedDate==null||dueOffset<0||titleFormatter==null)return false;
+  var notifications=notificationProvider==null?null:notificationProvider.getIfAvailable();
+  if(notifications==null)return false;
+  Optional<Schedule> lockedOpt=schedules.lockById(scheduleId);
+  if(lockedOpt.isEmpty())return false;
+  Schedule locked=lockedOpt.get();
+  if(!expectedDate.equals(locked.getDate()))return false;
+  String title=titleFormatter.apply(locked.getDateKind(),locked.getTitle());
+  return notifications.createScheduleDue(locked.getUserId(),locked.getScheduleId(),dueOffset,locked.getDate(),title,subTitle);
  }
  public List<UpcomingScheduleInfo> upcoming(UUID userId,int limit){
   if(limit<1||limit>10)throw new BusinessException(ErrorCode.INVALID_INPUT);
@@ -103,18 +125,12 @@ public class ScheduleService {
  public ScheduleCandidateSetInfo getCandidates(UUID userId,Long analysisId){
   if(userId==null||analysisId==null)throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
   var analysis=analysisProvider==null?null:analysisProvider.getIfAvailable();
-  Long contractId;String contractTitle;String status;
-  try{
-   if(analysis==null)throw new UnsupportedOperationException();
-   AnalysisRefInfo ref=analysis.getRef(userId,analysisId);
-   contractId=ref.contractId();status=ref.status();
-   contractTitle=contracts.getSummary(userId,contractId).title();
-  }catch(UnsupportedOperationException e){
-   var fallback=resolveAnalysisOwnerFallback(userId,analysisId);
-   contractId=fallback.contractId();contractTitle=fallback.title();status=fallback.status();
-  }
-  if(!"COMPLETED".equals(status))throw new BusinessException(ErrorCode.CONTRACT_NOT_ANALYZED);
-  List<ScheduleCandidateInfo> all=analysis==null?List.of():analysis.getScheduleCandidates(analysisId);
+  if(analysis==null)throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
+  AnalysisRefInfo ref=analysis.getRef(userId,analysisId);
+  if(!"COMPLETED".equals(ref.status()))throw new BusinessException(ErrorCode.CONTRACT_NOT_ANALYZED);
+  Long contractId=ref.contractId();
+  String contractTitle=contracts.getSummary(userId,contractId).title();
+  List<ScheduleCandidateInfo> all=analysis.getScheduleCandidates(analysisId);
   var candidates=new ArrayList<ScheduleCandidateSetInfo.CandidateItem>();
   var missing=new ArrayList<ScheduleCandidateSetInfo.MissingItem>();
   for(var c:all){
@@ -249,20 +265,4 @@ public class ScheduleService {
    .map(s->new ConfirmComparisonInfo.SavedSchedule(s.getScheduleId(),s.getTitle(),s.getDate())).toList();
  }
  private LocalDate seoulToday(){return LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")));}
- private record FallbackRef(Long contractId,String title,String status){}
- private FallbackRef resolveAnalysisOwnerFallback(UUID userId,Long analysisId){
-  var jdbc=jdbcProvider==null?null:jdbcProvider.getIfAvailable();
-  if(jdbc==null)throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
-  var rows=jdbc.query("SELECT a.version_id,a.status FROM analysis a WHERE a.analysis_id=?",
-   (rs,i)->Map.entry(rs.getLong("version_id"),rs.getString("status")),analysisId);
-  if(rows.isEmpty())throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
-  Long versionId=rows.get(0).getKey();String status=rows.get(0).getValue();
-  try{
-   ContractVersionInfo owner=contracts.getVersionOwner(userId,versionId);
-   return new FallbackRef(owner.contractId(),owner.title(),status);
-  }catch(BusinessException e){
-   if(e.getErrorCode()==ErrorCode.CONTRACT_NOT_FOUND)throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
-   throw e;
-  }
- }
 }

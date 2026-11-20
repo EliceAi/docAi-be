@@ -12,7 +12,11 @@ public interface ScheduleRepository extends JpaRepository<Schedule,Long> {
  Optional<Schedule> findByCandidateId(Long candidateId);
  List<Schedule> findByUserIdAndContractIdOrderByDateAscScheduleIdAsc(UUID userId,Long contractId);
  List<Schedule> findByUserIdAndDateGreaterThanEqualOrderByDateAscScheduleIdAsc(UUID userId,LocalDate date,Pageable pageable);
+ List<Schedule> findByDateInOrderByDateAscScheduleIdAsc(Collection<LocalDate> dates);
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select s from Schedule s where s.scheduleId=:id and s.userId=:user")
  Optional<Schedule> lockOwned(@Param("user") UUID user,@Param("id") Long id);
+ @Lock(LockModeType.PESSIMISTIC_WRITE)
+ @Query("select s from Schedule s where s.scheduleId=:id")
+ Optional<Schedule> lockById(@Param("id") Long id);
 }

@@ -62,6 +62,21 @@ public class NotificationService {
   repository.deleteUnreadByScheduleIdAndDueDate(scheduleId,dueDate);
  }
  @Transactional
+ public boolean createScheduleDue(UUID userId,Long scheduleId,int dueOffset,LocalDate dueDate,String title,String subTitle){
+  if(userId==null||scheduleId==null||dueDate==null||dueOffset<0||title==null||title.isBlank())return false;
+  if(repository.existsByScheduleIdAndTypeAndDueOffsetAndDueDate(scheduleId,"SCHEDULE_DUE",dueOffset,dueDate))return false;
+  String safeTitle=truncate(title,100);
+  String safeSubTitle=subTitle==null?null:truncate(subTitle,100);
+  repository.saveAndFlush(com.team.docai.domain.notification.entity.Notification.scheduleDue(userId,scheduleId,dueOffset,dueDate,safeTitle,safeSubTitle));
+  return true;
+ }
+ private static String truncate(String text,int maxCodePoints){
+  if(text==null)return null;
+  int count=text.codePointCount(0,text.length());
+  if(count<=maxCodePoints)return text;
+  return text.substring(0,text.offsetByCodePoints(0,maxCodePoints));
+ }
+ @Transactional
  public void createAnalysisResult(UUID userId,Long analysisId,String type,String title,String subTitle){
   if(userId==null||analysisId==null||type==null||!java.util.Set.of("ANALYSIS_DONE","ANALYSIS_FAILED").contains(type))
    throw new com.team.docai.global.error.BusinessException(com.team.docai.global.error.ErrorCode.INVALID_INPUT);

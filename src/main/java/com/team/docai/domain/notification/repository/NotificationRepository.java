@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.util.*;
 public interface NotificationRepository extends JpaRepository<Notification,Long> {
  boolean existsByAnalysisIdAndType(Long analysisId,String type);
+ boolean existsByScheduleIdAndTypeAndDueOffsetAndDueDate(Long scheduleId,String type,Integer dueOffset,LocalDate dueDate);
  long countByUserIdAndReadFalse(UUID userId);
  List<Notification> findByUserIdOrderByCreatedAtDescNotificationIdDesc(UUID userId);
  List<Notification> findByUserIdOrderByNotificationIdDesc(UUID userId,Pageable pageable);

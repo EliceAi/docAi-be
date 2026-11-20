@@ -76,6 +76,17 @@ public class ComparisonService {
  }
 
  @Transactional(propagation=Propagation.MANDATORY)
+ public void discardForRevisedContract(Long revisedContractId){
+  if(revisedContractId==null)return;
+  OffsetDateTime now=OffsetDateTime.now();
+  for(Comparison c:comparisons.findByRevisedContractIdAndStatus(revisedContractId,"PENDING_CONFIRM")){
+   c.discard(now);
+   comparisons.save(c);
+  }
+  comparisons.flush();
+ }
+
+ @Transactional(propagation=Propagation.MANDATORY)
  public void supersedeForRevisedVersion(Long revisedVersionId){
   if(revisedVersionId==null)return;
   OffsetDateTime now=OffsetDateTime.now();
