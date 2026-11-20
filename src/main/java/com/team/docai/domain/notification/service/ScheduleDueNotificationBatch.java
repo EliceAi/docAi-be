@@ -3,8 +3,9 @@ import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.domain.schedule.dto.ScheduleDueTargetInfo;
 import com.team.docai.domain.schedule.service.ScheduleService;
 import com.team.docai.global.error.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,32 +15,47 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
- * 일정 알림 배치 (D-N). Asia/Seoul 기준 매일 오전 9시에 실행.
- * 명세 예시 기준 D-7, D-1, D-0(당일) 시점에 SCHEDULE_DUE 알림을 생성하며,
- * uq_notification_due(schedule_id, type, due_offset, due_date)로 중복 생성을 방지한다.
+ * 일정 알림 배치 (D-N).
+ * 실행 시각(cron)과 알림 시점(offsets)은 명세상 팀 협의 항목이므로 임의 기본값을 강제하지 않는다.
+ * 팀 협의 후 docai.batch.schedule-due.enabled=true, cron, offsets를 설정하면 동작한다.
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
-@ConditionalOnProperty(prefix="docai.batch.schedule-due",name="enabled",havingValue="true",matchIfMissing=true)
+@ConditionalOnProperty(prefix="docai.batch.schedule-due",name="enabled",havingValue="true",matchIfMissing=false)
 public class ScheduleDueNotificationBatch {
- static final List<Integer> DUE_OFFSETS=List.of(7,1,0);
  private static final ZoneId SEOUL=ZoneId.of("Asia/Seoul");
 
  private final ScheduleService schedules;
  private final ContractService contracts;
  private final NotificationService notifications;
  private final Clock clock;
+ private final List<Integer> dueOffsets;
 
- @Scheduled(cron="${docai.batch.schedule-due.cron:0 0 9 * * *}",zone="Asia/Seoul")
+ @Autowired
+ public ScheduleDueNotificationBatch(
+  ScheduleService schedules,
+  ContractService contracts,
+  NotificationService notifications,
+  Clock clock,
+  @Value("${docai.batch.schedule-due.offsets:}") List<Integer> dueOffsets
+ ){
+  this.schedules=schedules;
+  this.contracts=contracts;
+  this.notifications=notifications;
+  this.clock=clock;
+  this.dueOffsets=dueOffsets==null?List.of():dueOffsets.stream().filter(o->o!=null&&o>=0).distinct().toList();
+ }
+
+ @Scheduled(cron="${docai.batch.schedule-due.cron:-}",zone="Asia/Seoul")
  public int run(){
+  if(dueOffsets.isEmpty())return 0;
   LocalDate today=LocalDate.now(clock.withZone(SEOUL));
-  List<LocalDate> targetDates=DUE_OFFSETS.stream().map(today::plusDays).toList();
+  List<LocalDate> targetDates=dueOffsets.stream().map(today::plusDays).toList();
   List<ScheduleDueTargetInfo> targets=schedules.findDueTargets(targetDates);
   int created=0;
   for(ScheduleDueTargetInfo s:targets){
    int offset=(int)ChronoUnit.DAYS.between(today,s.date());
-   if(!DUE_OFFSETS.contains(offset))continue;
+   if(!dueOffsets.contains(offset))continue;
    String title=formatTitle(offset,s.title());
    String subTitle=resolveContractTitle(s);
    try{
@@ -57,8 +73,7 @@ public class ScheduleDueNotificationBatch {
  }
 
  static String formatTitle(int offset,String scheduleTitle){
-  String prefix=offset==0?"D-day":"D-"+offset;
-  return prefix+" · "+scheduleTitle;
+  return "D-"+offset+" · "+scheduleTitle;
  }
 
  private String resolveContractTitle(ScheduleDueTargetInfo s){

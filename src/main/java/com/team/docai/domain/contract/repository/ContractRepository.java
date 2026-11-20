@@ -10,7 +10,7 @@ public interface ContractRepository extends JpaRepository<Contract,Long> {
  List<Contract> findByUserIdAndArchivedTrueAndDeletedAtIsNullOrderByUpdatedAtDescContractIdDesc(UUID userId);
  List<Contract> findByUserIdAndDocumentTypeCodeAndArchivedTrueAndDeletedAtIsNullOrderByContractIdDesc(UUID userId,String documentTypeCode);
  List<Contract> findByArchivedFalseAndDeletedAtIsNullAndCreatedAtBefore(OffsetDateTime cutoff);
- List<Contract> findByDeletedAtIsNotNullAndDeletedAtBefore(OffsetDateTime cutoff);
+ List<Contract> findByDeletedAtIsNotNull();
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select c from Contract c where c.contractId=:id and c.deletedAt is null")
  Optional<Contract> lockActive(@Param("id") Long id);

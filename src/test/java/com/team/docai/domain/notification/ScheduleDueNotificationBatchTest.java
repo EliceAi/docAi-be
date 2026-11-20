@@ -20,30 +20,35 @@ class ScheduleDueNotificationBatchTest {
  final NotificationService notifications=mock(NotificationService.class);
  // 2026-11-18 09:00 Asia/Seoul == 2026-11-18 00:00 UTC
  final Clock clock=Clock.fixed(Instant.parse("2026-11-18T00:00:00Z"),ZoneOffset.UTC);
- final ScheduleDueNotificationBatch batch=new ScheduleDueNotificationBatch(schedules,contracts,notifications,clock);
 
- @Test void createsD7D1D0AndHandlesDeletedContractAndDuplicates() {
-  LocalDate d0=LocalDate.of(2026,11,18);
+ @Test void skipsWhenOffsetsNotConfigured() {
+  var batch=new ScheduleDueNotificationBatch(schedules,contracts,notifications,clock,List.of());
+  assertEquals(0,batch.run());
+  verifyNoInteractions(schedules,contracts,notifications);
+ }
+
+ @Test void createsConfiguredOffsetsAndHandlesDeletedContractAndDuplicates() {
+  var batch=new ScheduleDueNotificationBatch(schedules,contracts,notifications,clock,List.of(7,1));
   LocalDate d1=LocalDate.of(2026,11,19);
   LocalDate d7=LocalDate.of(2026,11,25);
-  when(schedules.findDueTargets(List.of(d7,d1,d0))).thenReturn(List.of(
+  when(schedules.findDueTargets(List.of(d7,d1))).thenReturn(List.of(
    new ScheduleDueTargetInfo(1L,user,10L,"잔금일",d7),
    new ScheduleDueTargetInfo(2L,user,11L,"입주일",d1),
-   new ScheduleDueTargetInfo(3L,user,null,"만기일",d0),
-   new ScheduleDueTargetInfo(4L,user,10L,"중복일정",d0)
+   new ScheduleDueTargetInfo(3L,user,null,"만기일",d1),
+   new ScheduleDueTargetInfo(4L,user,10L,"중복일정",d1)
   ));
   when(contracts.getSummary(user,10L)).thenReturn(new ContractSummaryInfo(10L,"원룸 계약서",true,null));
   when(contracts.getSummary(user,11L)).thenThrow(new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
   when(notifications.createScheduleDue(user,1L,7,d7,"D-7 · 잔금일","원룸 계약서")).thenReturn(true);
   when(notifications.createScheduleDue(user,2L,1,d1,"D-1 · 입주일",null)).thenReturn(true);
-  when(notifications.createScheduleDue(user,3L,0,d0,"D-day · 만기일",null)).thenThrow(new DataIntegrityViolationException("uq_notification_due"));
-  when(notifications.createScheduleDue(user,4L,0,d0,"D-day · 중복일정","원룸 계약서")).thenReturn(false);
+  when(notifications.createScheduleDue(user,3L,1,d1,"D-1 · 만기일",null)).thenThrow(new DataIntegrityViolationException("uq_notification_due"));
+  when(notifications.createScheduleDue(user,4L,1,d1,"D-1 · 중복일정","원룸 계약서")).thenReturn(false);
 
   int created=batch.run();
   assertEquals(2,created);
   verify(notifications).createScheduleDue(user,1L,7,d7,"D-7 · 잔금일","원룸 계약서");
   verify(notifications).createScheduleDue(user,2L,1,d1,"D-1 · 입주일",null);
-  verify(notifications).createScheduleDue(user,3L,0,d0,"D-day · 만기일",null);
-  verify(notifications).createScheduleDue(user,4L,0,d0,"D-day · 중복일정","원룸 계약서");
+  verify(notifications).createScheduleDue(user,3L,1,d1,"D-1 · 만기일",null);
+  verify(notifications).createScheduleDue(user,4L,1,d1,"D-1 · 중복일정","원룸 계약서");
  }
 }

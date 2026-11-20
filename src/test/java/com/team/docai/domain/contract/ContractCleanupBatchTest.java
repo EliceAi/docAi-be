@@ -28,7 +28,6 @@ class ContractCleanupBatchTest {
  final ObjectProvider<JdbcTemplate> jdbcProvider=mock(ObjectProvider.class);
  final Instant nowInstant=Instant.parse("2026-11-20T19:00:00Z");
  final Clock clock=Clock.fixed(nowInstant,ZoneOffset.UTC);
- final ContractCleanupBatch batch=new ContractCleanupBatch(contracts,versions,pages,storage,analysisProvider,comparisonProvider,jdbcProvider,clock);
 
  Contract makeContract(long id,boolean archived,OffsetDateTime deletedAt) throws Exception {
   var c=Contract.class.getDeclaredConstructor();c.setAccessible(true);var entity=c.newInstance();
@@ -50,7 +49,8 @@ class ContractCleanupBatchTest {
   return p;
  }
 
- @Test void cleansUnarchivedAndSoftDeletedImagesAndIdempotencyAndSkipsAnalyzing() throws Exception {
+ @Test void cleansUnarchivedAndSoftDeletedImagesAndSkipsAnalyzingAndUnconfiguredIdempotency() throws Exception {
+  var batch=new ContractCleanupBatch(contracts,versions,pages,storage,analysisProvider,comparisonProvider,jdbcProvider,clock,null);
   when(analysisProvider.getIfAvailable()).thenReturn(analysis);
   when(comparisonProvider.getIfAvailable()).thenReturn(comparison);
   when(jdbcProvider.getIfAvailable()).thenReturn(jdbc);
@@ -58,12 +58,12 @@ class ContractCleanupBatchTest {
   OffsetDateTime cutoff=OffsetDateTime.ofInstant(nowInstant,ZoneOffset.UTC).minusDays(7);
   Contract expired=makeContract(1L,false,null);
   Contract analyzing=makeContract(2L,false,null);
-  Contract alreadyDeleted=makeContract(3L,false,cutoff.minusDays(1));
+  Contract alreadyDeleted=makeContract(3L,false,cutoff.plusDays(6));
 
   when(contracts.findByArchivedFalseAndDeletedAtIsNullAndCreatedAtBefore(cutoff)).thenReturn(List.of(expired,analyzing));
   when(contracts.lockActive(1L)).thenReturn(Optional.of(expired));
   when(contracts.lockActive(2L)).thenReturn(Optional.of(analyzing));
-  when(contracts.findByDeletedAtIsNotNullAndDeletedAtBefore(cutoff)).thenReturn(List.of(alreadyDeleted));
+  when(contracts.findByDeletedAtIsNotNull()).thenReturn(List.of(alreadyDeleted));
 
   when(versions.findByContractIdOrderByVersionNoDesc(1L)).thenReturn(List.of(makeVersion(10L,1L)));
   when(versions.findByContractIdOrderByVersionNoDesc(2L)).thenReturn(List.of(makeVersion(20L,2L)));
@@ -74,7 +74,6 @@ class ContractCleanupBatchTest {
 
   when(pages.findByVersionIdOrderByPageNoAsc(10L)).thenReturn(List.of(makePage(10L,"img-10.png")));
   when(pages.findByVersionIdOrderByPageNoAsc(30L)).thenReturn(List.of(makePage(30L,"img-30.png")));
-  when(jdbc.update("DELETE FROM idempotency_record WHERE created_at < ?",cutoff)).thenReturn(5);
 
   int cleaned=batch.run();
   assertEquals(1,cleaned);
@@ -86,6 +85,18 @@ class ContractCleanupBatchTest {
   verify(comparison,never()).discardForRevisedContract(2L);
   verify(storage).delete("img-10.png");
   verify(storage).delete("img-30.png");
-  verify(jdbc).update("DELETE FROM idempotency_record WHERE created_at < ?",cutoff);
+  verifyNoInteractions(jdbc);
+ }
+
+ @Test void cleansIdempotencyWhenRetentionDaysConfigured() {
+  var batch=new ContractCleanupBatch(contracts,versions,pages,storage,analysisProvider,comparisonProvider,jdbcProvider,clock,14);
+  when(jdbcProvider.getIfAvailable()).thenReturn(jdbc);
+  when(contracts.findByArchivedFalseAndDeletedAtIsNullAndCreatedAtBefore(any())).thenReturn(List.of());
+  when(contracts.findByDeletedAtIsNotNull()).thenReturn(List.of());
+  OffsetDateTime expectedCutoff=OffsetDateTime.ofInstant(nowInstant,ZoneOffset.UTC).minusDays(14);
+  when(jdbc.update("DELETE FROM idempotency_record WHERE created_at < ?",expectedCutoff)).thenReturn(3);
+
+  assertEquals(0,batch.run());
+  verify(jdbc).update("DELETE FROM idempotency_record WHERE created_at < ?",expectedCutoff);
  }
 }
