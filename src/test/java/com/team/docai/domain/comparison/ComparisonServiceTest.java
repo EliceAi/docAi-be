@@ -173,4 +173,34 @@ class ComparisonServiceTest {
   // Already confirmed comparison rejects discard with COMPARISON_ALREADY_CLOSED
   assertEquals(ErrorCode.COMPARISON_ALREADY_CLOSED,assertThrows(BusinessException.class,()->service.discard(user,9L)).getErrorCode());
  }
+
+ @Test void getForChatReturnsSummaryAndFirst20ChangesAndHidesDeletedPrevious(){
+  Comparison comp=Comparison.create(user,10L,100L,20L,200L,2000L,"FULL","보증금 그대로");
+  ReflectionTestUtils.setField(comp,"comparisonId",9L);
+  when(comparisons.findByComparisonIdAndUserId(9L,user)).thenReturn(Optional.of(comp));
+  when(contracts.getSummary(user,10L)).thenReturn(new ContractSummaryInfo(10L,"원룸",true,1000L));
+  List<ComparisonChange> rows=new ArrayList<>();
+  for(int i=1;i<=25;i++){
+   var ch=ComparisonChange.createChange(9L,"CHANGED","AMOUNT","항목"+i,"이전"+i,"수정"+i,"메모"+i,"WRITTEN");
+   ReflectionTestUtils.setField(ch,"changeId",(long)i);rows.add(ch);
+  }
+  when(changes.findByComparisonIdOrderByChangeIdAsc(9L)).thenReturn(rows);
+
+  var info=service.getForChat(user,9L);
+  assertEquals(9L,info.comparisonId());
+  assertEquals(10L,info.previousContractId());
+  assertEquals("PENDING_CONFIRM",info.status());
+  assertEquals("보증금 그대로",info.unchangedSummary());
+  assertEquals(20,info.changes().size());
+  assertEquals(new ComparisonForChatInfo.Change("CHANGED","AMOUNT","항목1","이전1","수정1","메모1"),info.changes().get(0));
+  assertEquals("항목20",info.changes().get(19).label());
+
+  // Previous contract deleted (or not mine) -> COMPARISON_NOT_FOUND
+  when(contracts.getSummary(user,10L)).thenThrow(new BusinessException(ErrorCode.CONTRACT_NOT_FOUND));
+  assertEquals(ErrorCode.COMPARISON_NOT_FOUND,assertThrows(BusinessException.class,()->service.getForChat(user,9L)).getErrorCode());
+
+  // Not my comparison -> COMPARISON_NOT_FOUND
+  when(comparisons.findByComparisonIdAndUserId(8L,user)).thenReturn(Optional.empty());
+  assertEquals(ErrorCode.COMPARISON_NOT_FOUND,assertThrows(BusinessException.class,()->service.getForChat(user,8L)).getErrorCode());
+ }
 }
