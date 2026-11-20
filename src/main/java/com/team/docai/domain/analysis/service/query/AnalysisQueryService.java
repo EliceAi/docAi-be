@@ -35,6 +35,7 @@ import com.team.docai.domain.analysis.dto.ClauseDetailInfo;
 import com.team.docai.domain.analysis.dto.SampleAnalysisInfo;
 import com.team.docai.domain.contract.dto.ContractVersionInfo;
 import com.team.docai.domain.contract.service.ContractService;
+import com.team.docai.domain.documenttype.service.DocumentTypeService;
 import com.team.docai.domain.law.dto.ArticleNumber;
 import com.team.docai.domain.law.dto.LawArticleInfo;
 import com.team.docai.domain.law.service.LawSearchService;
@@ -66,8 +67,8 @@ import java.util.stream.IntStream;
  * <ul>
  *   <li>소유권: analysis.version_id 로 B {@code ContractService.getVersionOwner} 를 불러 확인한다. 남의 것·삭제된 계약서의
  *       분석은 ANALYSIS_NOT_FOUND (B 의 CONTRACT_NOT_FOUND 를 바꿈). 계약서 ID·버전 번호·제목·쪽 수·가린 곳 수도 그 반환값을 쓴다.</li>
- *   <li>점검 깊이(checkLevel)·비슷한 계약서 정보는 아직 {@link ContractReadOnlyQuery} 의 읽기 전용 SQL 로 읽는다
- *       (담당_연결지점 '임시 예외').</li>
+ *   <li>점검 깊이(checkLevel)는 B {@code DocumentTypeService.getCheckLevel}, 비슷한 계약서 정보는 B
+ *       {@code ContractService.getSimilarContractInfo} 로 읽는다.</li>
  *   <li>결과·조항은 COMPLETED 분석만. 판정 중(JUDGING)·제외(excluded) 조항은 어디에도 넣지 않는다.</li>
  *   <li>근거 법령은 AI 가 인용하고 검증을 통과한(cited) 조문만. 해석 메모는 보여 주지 않는다.</li>
  *   <li>UNCERTAIN 조항은 쉬운 설명과 물어볼 것만 보여 준다. 법적 판단 문구(why_check, issue_summary)와 법령은 넣지 않는다
@@ -92,7 +93,7 @@ public class AnalysisQueryService {
     private final AnalysisClauseRelationRepository analysisClauseRelationRepository;
     private final AnalysisResultReader reader;
     private final ContractService contractService;
-    private final ContractReadOnlyQuery contractQuery;
+    private final DocumentTypeService documentTypeService;
     private final LawSearchService lawSearchService;
     private final SampleAnalysisReader sampleReader;
     private final Clock clock;
@@ -257,7 +258,7 @@ public class AnalysisQueryService {
         return new Result(
                 version.title(),
                 analysis.getDocumentTypeCode(),
-                contractQuery.findCheckLevel(analysis.getDocumentTypeCode()),
+                checkLevel(analysis.getDocumentTypeCode()),
                 inZone(analysis.getCompletedAt()),
                 coverage,
                 keyTerms,
@@ -273,13 +274,25 @@ public class AnalysisQueryService {
                 DISCLAIMER);
     }
 
-    /** 자기 자신을 가리키면 보여 주지 않는다 (설계_점검 21번 이중 방어). 보관·삭제·소유 조건은 쿼리가 거른다 */
+    /**
+     * 문서 종류의 점검 깊이 (A / B). 코드가 없으면 null.
+     * <p>
+     * B getCheckLevel 은 없는 코드(null 포함)면 UNSUPPORTED_DOCUMENT_TYPE 을 던지고, B 서비스가 이 읽기 트랜잭션에 참여하므로
+     * 던지는 순간 트랜잭션이 rollback-only 가 된다. 그래서 받아서 삼키지 않는다: null 은 부르기 전에 걸러 null 로 두고,
+     * analysis.document_type_code 는 NOT NULL + document_type FK(fk_analysis_document_type_code)라 없는 코드는 생기지 않는다.
+     * 그래도 생기면 예외가 그대로 올라가 트랜잭션은 롤백으로 끝난다 (UnexpectedRollbackException 이 아님).
+     */
+    private String checkLevel(String documentTypeCode) {
+        return documentTypeCode == null ? null : documentTypeService.getCheckLevel(documentTypeCode);
+    }
+
+    /** 자기 자신을 가리키면 보여 주지 않는다 (설계_점검 21번 이중 방어). 보관·삭제·소유 조건은 B 메서드가 거른다 */
     private SimilarContract similarContract(UUID userId, Analysis analysis, ContractVersionInfo version) {
         Long similarId = analysis.getSimilarContractId();
         if (similarId == null || similarId.equals(version.contractId())) {
             return null;
         }
-        return contractQuery.findSimilarContract(userId, similarId)
+        return contractService.getSimilarContractInfo(userId, similarId)
                 .map(s -> new SimilarContract(s.contractId(), s.title(), inZone(s.analyzedAt()), s.scheduleCount()))
                 .orElse(null);
     }

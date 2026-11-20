@@ -58,10 +58,16 @@ public class ComparisonService {
   this.jdbcProvider=jdbcProvider;this.gptProvider=gptProvider;this.txManagerProvider=txManagerProvider;this.mapper=mapper;
  }
 
+ static final int CHAT_MAX_CHANGES=20;
+ // 내 비교이고 이전본 계약서가 내 것이며 삭제되지 않았을 때만. 아니면 COMPARISON_NOT_FOUND. 바뀐 곳은 change_id 순 최대 20개
  public ComparisonForChatInfo getForChat(UUID userId,Long comparisonId){
   if(userId==null||comparisonId==null)throw new BusinessException(ErrorCode.COMPARISON_NOT_FOUND);
   Comparison c=comparisons.findByComparisonIdAndUserId(comparisonId,userId).orElseThrow(()->new BusinessException(ErrorCode.COMPARISON_NOT_FOUND));
-  return new ComparisonForChatInfo(c.getComparisonId(),c.getPreviousContractId(),c.getStatus());
+  try{contracts.getSummary(userId,c.getPreviousContractId());}
+  catch(BusinessException e){if(e.getErrorCode()==ErrorCode.CONTRACT_NOT_FOUND)throw new BusinessException(ErrorCode.COMPARISON_NOT_FOUND);throw e;}
+  var items=changes.findByComparisonIdOrderByChangeIdAsc(c.getComparisonId()).stream().limit(CHAT_MAX_CHANGES)
+   .map(ch->new ComparisonForChatInfo.Change(ch.getType(),ch.getCategory(),ch.getLabel(),ch.getBeforeText(),ch.getAfterText(),ch.getNote())).toList();
+  return new ComparisonForChatInfo(c.getComparisonId(),c.getPreviousContractId(),c.getStatus(),c.getUnchangedSummary(),items);
  }
 
  @Transactional(propagation=Propagation.MANDATORY)

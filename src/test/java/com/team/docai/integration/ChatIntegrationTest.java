@@ -347,6 +347,23 @@ class ChatIntegrationTest {
     }
 
     @Test
+    void 이전본_계약서가_삭제된_비교로_질문하면_404_COMPARISON_NOT_FOUND이고_아무것도_저장하지_않는다() throws Exception {
+        long deletedPrevious = newContract(owner, true, true, "삭제된 이전본");
+        long deletedPreviousVersion = newVersion(deletedPrevious);
+        long revised2 = newContract(owner, false, false, null);
+        long revised2Version = newVersion(revised2);
+        long staleComparison = newComparison(owner, deletedPrevious, deletedPreviousVersion, revised2, revised2Version,
+                newAnalysis(revised2Version));
+        long before = jdbc.queryForObject("select count(*) from conversation where user_id = ?", Long.class, owner);
+
+        ask(owner, "{\"message\":\"질문\",\"screen\":\"S12\",\"comparisonId\":" + staleComparison + "}")
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("COMPARISON_NOT_FOUND"));
+
+        assertThat(jdbc.queryForObject("select count(*) from conversation where user_id = ?", Long.class, owner))
+                .isEqualTo(before);
+    }
+
+    @Test
     void 명세_에러_코드_행마다_확인하고_실패하면_아무것도_저장하지_않는다() throws Exception {
         long conversationId = body(ask(owner, "{\"message\":\"질문\",\"screen\":\"S08\",\"contractId\":" + contract + "}")
                 .andExpect(status().isCreated())).at("/data/conversationId").asLong();
