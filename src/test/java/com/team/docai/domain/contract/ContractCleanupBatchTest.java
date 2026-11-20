@@ -82,8 +82,8 @@ class ContractCleanupBatchTest {
   assertNull(analyzing.getDeletedAt());
   verify(contracts).save(expired);
   verify(contracts,never()).save(analyzing);
-  verify(comparison).supersedeForRevisedContract(1L);
-  verify(comparison,never()).supersedeForRevisedContract(2L);
+  verify(comparison).discardForRevisedContract(1L);
+  verify(comparison,never()).discardForRevisedContract(2L);
   verify(storage).delete("img-10.png");
   verify(storage).delete("img-30.png");
   verify(jdbc).update("DELETE FROM idempotency_record WHERE created_at < ?",cutoff);

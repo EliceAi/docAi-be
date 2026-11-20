@@ -20,7 +20,7 @@ import java.util.*;
 /**
  * 7일 정리 배치 (담당_연결지점.md B 담당 배치). Asia/Seoul 기준 매일 새벽 4시 실행.
  * 1) 7일 이상 보관되지 않은 미보관 계약서(archived=false, deleted_at IS NULL, created_at < now-7d):
- *    분석 중이 아니면 소프트 삭제, 관련 확정 전 비교 SUPERSEDED 처리, 저장된 이미지 파일 정리.
+ *    분석 중이 아니면 소프트 삭제, 관련 확정 전 비교 DISCARDED 처리, 저장된 이미지 파일 정리.
  * 2) 이미 소프트 삭제된 계약서(deleted_at IS NOT NULL, deleted_at < now-7d):
  *    남아 있는 페이지 이미지 파일 정리 (DB 기록과 분석·알림 이력은 유지).
  * 3) 7일이 지난 idempotency_record 삭제.
@@ -62,7 +62,7 @@ public class ContractCleanupBatch {
    if(analyzing)continue;
    locked.softDelete(now);
    contracts.save(locked);
-   if(comparison!=null)comparison.supersedeForRevisedContract(locked.getContractId());
+   if(comparison!=null)comparison.discardForRevisedContract(locked.getContractId());
    for(ContractVersion v:verList){
     for(ContractPage p:pages.findByVersionIdOrderByPageNoAsc(v.getVersionId())){
      if(p.getImageKey()!=null)keysToDelete.add(p.getImageKey());
