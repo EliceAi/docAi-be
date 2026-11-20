@@ -9,8 +9,8 @@ import com.team.docai.domain.chat.entity.ChatMessage;
 import com.team.docai.domain.chat.entity.Conversation;
 import com.team.docai.domain.chat.repository.ChatMessageRepository;
 import com.team.docai.domain.chat.repository.ConversationRepository;
-import com.team.docai.domain.chat.service.query.ComparisonReadOnlyQuery;
-import com.team.docai.domain.chat.service.query.ComparisonReadOnlyQuery.ComparisonForChat;
+import com.team.docai.domain.comparison.dto.ComparisonForChatInfo;
+import com.team.docai.domain.comparison.service.ComparisonService;
 import com.team.docai.domain.contract.dto.ContractSummaryInfo;
 import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.domain.law.dto.ArticleNumber;
@@ -41,8 +41,9 @@ import java.util.UUID;
  *   <li>계약서: B {@code ContractService.getSummary} (남의 것·삭제됨이면 CONTRACT_NOT_FOUND 를 그대로 올림).</li>
  *   <li>새 대화의 분석: 내 분석이 아니면 ANALYSIS_NOT_FOUND. contractId 와 다른 계약서의 분석이어도 ANALYSIS_NOT_FOUND.
  *       contractId 없이 analysisId 만 오면 그 분석의 계약서를 연결한다.</li>
- *   <li>새 대화의 비교: 내 비교가 아니면 COMPARISON_NOT_FOUND. 비교의 이전본이 contractId 와 달라도 COMPARISON_NOT_FOUND.
- *       contractId 없이 오면 이전본을 연결한다.</li>
+ *   <li>새 대화의 비교: B {@code ComparisonService.getForChat} (내 비교가 아니거나 이전본 계약서가 삭제됐으면 B 가
+ *       COMPARISON_NOT_FOUND). 비교의 이전본이 contractId 와 달라도 COMPARISON_NOT_FOUND. contractId 없이 오면 이전본을
+ *       연결한다.</li>
  *   <li>조항: 답변에 쓰는 완료 분석의 보이는 조항이 아니면 CLAUSE_NOT_FOUND.</li>
  * </ol>
  * 답변에 쓰는 분석: 요청·대화의 분석이 COMPLETED 면 그것, 아니면(분석 중·실패) 계약서의 최신 완료 분석, 없으면 내용 없이 답한다
@@ -50,6 +51,8 @@ import java.util.UUID;
  * <p>
  * 기존 대화의 분석·계약서의 최신 분석을 읽을 때 그 계약서가 getSummary 확인 뒤 동시에 삭제됐으면 B getVersionOwner 의
  * CONTRACT_NOT_FOUND 를 그대로 올린다 (B 예외로 트랜잭션이 rollback-only 가 되므로 삼키고 이어 가지 않는다).
+ * 기존 대화의 비교도 같은 이유로 getForChat 의 COMPARISON_NOT_FOUND 를 삼키지 않고 올린다 (대화의 비교는 만들 때 확인했고
+ * 비교는 지워지거나 주인이 바뀌지 않는다. 그 사이 이전본 계약서가 삭제됐으면 COMPARISON_NOT_FOUND).
  */
 @Component
 @RequiredArgsConstructor
@@ -65,7 +68,7 @@ class ChatContextReader {
     private final ChatMessageRepository chatMessageRepository;
     private final ContractService contractService;
     private final AnalysisChatQueryService analysisChatQueryService;
-    private final ComparisonReadOnlyQuery comparisonQuery;
+    private final ComparisonService comparisonService;
     private final LawSearchService lawSearchService;
     private final LinkedDocuments linkedDocuments;
 
@@ -79,7 +82,7 @@ class ChatContextReader {
         Long analysisIdToStore = null;
         ContractSummaryInfo contract = null;
         AnalysisChatInfo requested = null;
-        ComparisonForChat comparison = null;
+        ChatContext.Comparison comparison = null;
 
         if (command.conversationId() != null) {
             Conversation conversation = conversationRepository.findByConversationIdAndUserId(command.conversationId(), userId)
@@ -102,7 +105,7 @@ class ChatContextReader {
                         .orElse(null);
             }
             if (comparisonId != null) {
-                comparison = comparisonQuery.find(userId, comparisonId).orElse(null);
+                comparison = findComparison(userId, comparisonId);
             }
         } else {
             contractId = command.contractId();
@@ -121,8 +124,7 @@ class ChatContextReader {
             }
             comparisonId = command.comparisonId();
             if (comparisonId != null) {
-                comparison = comparisonQuery.find(userId, comparisonId)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.COMPARISON_NOT_FOUND));
+                comparison = findComparison(userId, comparisonId);
                 if (contractId == null) {
                     contractId = comparison.previousContractId();
                     contract = contractService.getSummary(userId, contractId);
@@ -177,6 +179,16 @@ class ChatContextReader {
             }
             throw e;
         }
+    }
+
+    /**
+     * 비교: B getForChat 하나로 읽는다. 내 비교가 아니거나 이전본 계약서가 삭제됐으면 B 가 COMPARISON_NOT_FOUND 를 던진다.
+     * 그대로인 곳 요약·바뀐 곳 목록(change_id 순 최대 20)도 B 가 준다.
+     */
+    private ChatContext.Comparison findComparison(UUID userId, Long comparisonId) {
+        ComparisonForChatInfo info = comparisonService.getForChat(userId, comparisonId);
+        return new ChatContext.Comparison(info.comparisonId(), info.previousContractId(), info.status(),
+                info.unchangedSummary(), info.changes());
     }
 
     /**

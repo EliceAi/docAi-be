@@ -20,13 +20,13 @@ import java.time.OffsetDateTime;
  *       아무것도 남지 않는다.</li>
  *   <li>대화 요약은 {@link ConversationRepository#updateSummaryIfUnchanged} 로만 바꾼다. 같은 대화에 동시에 온 다른 질문이
  *       먼저 요약을 바꿨으면 0행이 되고, 이 요약은 버린다 (다음 질문이 최근 대화와 함께 다시 요약한다).</li>
- *   <li>새 대화에 계약서를 붙일 때는 이 트랜잭션 맨 앞에서 B {@code ContractService.getSummary} 로 계약서를 다시 확인한다.
- *       맥락을 읽은 뒤 GPT 를 기다리는 동안 수정본 확정이 ⑤ 대화 옮기기·⑦ 임시 계약서 삭제를 커밋하면, 확인 없이는
- *       삭제된 임시 계약서에 새 대화가 붙어 저장된다. 없어졌으면 CONTRACT_NOT_FOUND 로 끝내고 질문·답변도 저장하지 않는다.</li>
+ *   <li>새 대화에 계약서를 붙일 때는 이 트랜잭션 맨 앞에서 B {@code ContractService.lockForUpdate} 로 계약서 행을 잠근 뒤
+ *       B {@code ContractService.getSummary} 로 내 것인지 다시 확인한다. 맥락을 읽은 뒤 GPT 를 기다리는 동안 수정본 확정이
+ *       ⑤ 대화 옮기기·⑦ 임시 계약서 삭제를 커밋하면, 확인 없이는 삭제된 임시 계약서에 새 대화가 붙어 저장된다.
+ *       확정도 같은 계약서 행을 잠그므로 둘은 차례로 실행된다: 확정이 먼저면 잠금이 CONTRACT_NOT_FOUND 를 던지고,
+ *       이 저장이 먼저면 커밋할 때까지 확정이 기다린 뒤 ⑤에서 이 대화도 옮긴다. 없어졌거나 남의 것이면 CONTRACT_NOT_FOUND 로
+ *       끝내고 질문·답변도 저장하지 않는다. 잠금은 GPT 응답을 받은 뒤의 이 짧은 트랜잭션 안에서만 쥔다.</li>
  * </ul>
- * 남은 한계: 이 확인과 INSERT 사이의 아주 짧은 구간에 확정이 커밋되면 여전히 삭제된 계약서에 붙을 수 있다 (행을 잠그지 않으므로).
- * B 와 합의되면 확인 대신 {@code ContractService.lockForUpdate(contractId)} 로 계약서 행을 잠근 뒤 확인한다
- * (확정도 같은 행을 먼저 잠그므로 둘이 차례로 실행됨).
  */
 @Slf4j
 @Component
@@ -46,7 +46,8 @@ class ChatWriter {
         Long conversationId = ctx.conversationId();
         boolean created = conversationId == null;
         if (created && ctx.contractId() != null) {
-            // 남의 것·삭제됨이면 B 가 CONTRACT_NOT_FOUND 를 던지고 이 트랜잭션은 아무것도 남기지 않는다
+            // 삭제됐으면 잠금이, 남의 것이면 getSummary 가 CONTRACT_NOT_FOUND 를 던지고 이 트랜잭션은 아무것도 남기지 않는다
+            contractService.lockForUpdate(ctx.contractId());
             contractService.getSummary(ctx.userId(), ctx.contractId());
         }
         if (created) {

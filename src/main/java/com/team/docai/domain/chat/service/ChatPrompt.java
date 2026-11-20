@@ -3,8 +3,7 @@ package com.team.docai.domain.chat.service;
 import com.team.docai.domain.analysis.dto.AnalysisChatInfo;
 import com.team.docai.domain.analysis.entity.AnalysisStatus;
 import com.team.docai.domain.chat.entity.ChatRole;
-import com.team.docai.domain.chat.service.query.ComparisonReadOnlyQuery.Change;
-import com.team.docai.domain.chat.service.query.ComparisonReadOnlyQuery.ComparisonForChat;
+import com.team.docai.domain.comparison.dto.ComparisonForChatInfo.Change;
 import com.team.docai.domain.analysis.client.GptContentPart;
 import com.team.docai.domain.analysis.client.GptRequest;
 import com.team.docai.global.util.TextTruncator;
@@ -220,7 +219,7 @@ final class ChatPrompt {
         }
     }
 
-    private static void appendComparison(StringBuilder c, ComparisonForChat cmp) {
+    private static void appendComparison(StringBuilder c, ChatContext.Comparison cmp) {
         c.append("\n[비교 결과] 상태: ").append(cmp.status()).append('\n');
         if (cmp.changes().isEmpty()) {
             c.append("- 바뀐 곳 없음\n");

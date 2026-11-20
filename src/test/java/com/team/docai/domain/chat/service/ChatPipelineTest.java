@@ -24,9 +24,9 @@ import com.team.docai.domain.chat.entity.Conversation;
 import com.team.docai.domain.chat.entity.ReferenceType;
 import com.team.docai.domain.chat.repository.ChatMessageRepository;
 import com.team.docai.domain.chat.repository.ConversationRepository;
-import com.team.docai.domain.chat.service.query.ComparisonReadOnlyQuery;
-import com.team.docai.domain.chat.service.query.ComparisonReadOnlyQuery.Change;
-import com.team.docai.domain.chat.service.query.ComparisonReadOnlyQuery.ComparisonForChat;
+import com.team.docai.domain.comparison.dto.ComparisonForChatInfo;
+import com.team.docai.domain.comparison.dto.ComparisonForChatInfo.Change;
+import com.team.docai.domain.comparison.service.ComparisonService;
 import com.team.docai.domain.contract.dto.ContractSummaryInfo;
 import com.team.docai.domain.contract.service.ContractService;
 import com.team.docai.domain.law.dto.LawArticleInfo;
@@ -59,6 +59,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -83,7 +85,7 @@ class ChatPipelineTest {
     final ChatMessageRepository messages = mock(ChatMessageRepository.class);
     final ContractService contractService = mock(ContractService.class);
     final AnalysisChatQueryService analysisQuery = mock(AnalysisChatQueryService.class);
-    final ComparisonReadOnlyQuery comparisonQuery = mock(ComparisonReadOnlyQuery.class);
+    final ComparisonService comparisonService = mock(ComparisonService.class);
     final LawSearchService lawSearch = mock(LawSearchService.class);
     final AnalysisService analysisService = mock(AnalysisService.class);
     final GptClient gpt = mock(GptClient.class);
@@ -121,7 +123,7 @@ class ChatPipelineTest {
     ChatPipeline pipeline(int limit) {
         LinkedDocuments linked = new LinkedDocuments(analysisService, clock);
         ChatContextReader reader = new ChatContextReader(conversations, messages, contractService, analysisQuery,
-                comparisonQuery, lawSearch, linked);
+                comparisonService, lawSearch, linked);
         return new ChatPipeline(new ChatRateLimiter(clock, limit), reader, gpt, new ChatWriter(conversations, messages, contractService, clock));
     }
 
@@ -500,7 +502,7 @@ class ChatPipelineTest {
         verify(conversations, never()).touch(anyLong(), any());
         // 기존 대화에서는 analysisId·comparisonId 를 무시한다 (확인도 하지 않음)
         verify(analysisQuery, never()).findForChat(USER, 999L);
-        verifyNoInteractions(comparisonQuery);
+        verifyNoInteractions(comparisonService);
         // ai_call_log 에 대화 ID
         ArgumentCaptor<GptContext> ctx = ArgumentCaptor.forClass(GptContext.class);
         verify(gpt).call(any(), any(), any(), ctx.capture());
@@ -586,12 +588,59 @@ class ChatPipelineTest {
 
     @Test
     void 비교가_내_것이_아니거나_이전본이_다르면_404_COMPARISON_NOT_FOUND() {
-        when(comparisonQuery.find(USER, 9L)).thenReturn(Optional.empty());
+        // 내 것이 아니면 B getForChat 이 COMPARISON_NOT_FOUND 를 던진다
+        when(comparisonService.getForChat(USER, 9L)).thenThrow(new BusinessException(ErrorCode.COMPARISON_NOT_FOUND));
         assertError(new AskCommand(null, "질문", "S12", CONTRACT, null, null, 9L), ErrorCode.COMPARISON_NOT_FOUND);
 
-        when(comparisonQuery.find(USER, 10L))
-                .thenReturn(Optional.of(new ComparisonForChat(10L, 55L, "PENDING_CONFIRM", null, List.of())));
+        when(comparisonService.getForChat(USER, 10L))
+                .thenReturn(new ComparisonForChatInfo(10L, 55L, "PENDING_CONFIRM", null, List.of()));
         assertError(new AskCommand(null, "질문", "S12", CONTRACT, null, null, 10L), ErrorCode.COMPARISON_NOT_FOUND);
+    }
+
+    @Test
+    void 계약서_없이_온_비교의_이전본_계약서가_삭제됐으면_B_getForChat의_404_COMPARISON_NOT_FOUND를_그대로() {
+        // 이전본 계약서가 삭제됐으면 B getForChat 이 COMPARISON_NOT_FOUND 를 던진다. 이전본 계약서는 읽지 않는다
+        when(comparisonService.getForChat(USER, 11L)).thenThrow(new BusinessException(ErrorCode.COMPARISON_NOT_FOUND));
+
+        assertError(new AskCommand(null, "질문", "S12", null, null, null, 11L), ErrorCode.COMPARISON_NOT_FOUND);
+        verify(contractService, never()).getSummary(any(), anyLong());
+    }
+
+    @Test
+    void 새_대화_저장은_계약서를_잠근_뒤_다시_확인하고_저장한다() {
+        gptReturns(gptAnswer("ANSWERED", "답", List.of(), List.of(), false, null, List.of()));
+
+        pipeline.ask(USER, newQuestion("질문", null));
+
+        var order = inOrder(contractService, conversations);
+        order.verify(contractService).lockForUpdate(CONTRACT);
+        order.verify(contractService).getSummary(USER, CONTRACT);
+        order.verify(conversations).save(any());
+    }
+
+    @Test
+    void GPT를_기다리는_동안_계약서가_삭제되면_잠금에서_CONTRACT_NOT_FOUND_이고_아무것도_저장하지_않는다() {
+        gptReturns(gptAnswer("ANSWERED", "답", List.of(), List.of(), false, null, List.of()));
+        doThrow(new BusinessException(ErrorCode.CONTRACT_NOT_FOUND))
+                .when(contractService).lockForUpdate(CONTRACT);
+
+        assertThatThrownBy(() -> pipeline.ask(USER, newQuestion("질문", null)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONTRACT_NOT_FOUND);
+        verify(conversations, never()).save(any());
+        verify(messages, never()).save(any());
+    }
+
+    @Test
+    void 기존_대화_저장은_계약서를_잠그지_않는다() {
+        Conversation conversation = Conversation.create(USER, CONTRACT, ANALYSIS, null, "요약");
+        ReflectionTestUtils.setField(conversation, "conversationId", 3L);
+        when(conversations.findByConversationIdAndUserId(3L, USER)).thenReturn(Optional.of(conversation));
+        gptReturns(gptAnswer("ANSWERED", "답", List.of(), List.of(), false, null, List.of()));
+
+        pipeline.ask(USER, new AskCommand(3L, "질문", "S10", null, null, null, null));
+
+        verify(contractService, never()).lockForUpdate(anyLong());
     }
 
     @Test
@@ -647,8 +696,8 @@ class ChatPipelineTest {
 
     @Test
     void 비교에서_질문하면_비교를_연결하고_바뀐_곳을_보내며_비교_결과_버튼을_준다() {
-        when(comparisonQuery.find(USER, 9L)).thenReturn(Optional.of(new ComparisonForChat(9L, CONTRACT, "PENDING_CONFIRM",
-                "보증금 그대로", List.of(new Change("CHANGED", "AMOUNT", "월세", "월 55만 원", "월 58만 원", "매달 3만 원 늘어요")))));
+        when(comparisonService.getForChat(USER, 9L)).thenReturn(new ComparisonForChatInfo(9L, CONTRACT, "PENDING_CONFIRM",
+                "보증금 그대로", List.of(new Change("CHANGED", "AMOUNT", "월세", "월 55만 원", "월 58만 원", "매달 3만 원 늘어요"))));
         gptReturns(gptAnswer("ANSWERED", "월세가 3만 원 올랐어요.", List.of(), List.of("CURRENT_SCREEN"), false, null,
                 List.of(new ChatGptResponse.Action("OPEN_SCREEN", "S12"))));
 
@@ -656,9 +705,38 @@ class ChatPipelineTest {
 
         assertThat(savedConversations.get(0).getComparisonId()).isEqualTo(9L);
         assertThat(savedConversations.get(0).getContractId()).isEqualTo(CONTRACT);
-        assertThat(text(sentRequest())).contains("[비교 결과]", "월세 | 이전: 월 55만 원 | 수정: 월 58만 원");
+        assertThat(text(sentRequest())).contains("[비교 결과] 상태: PENDING_CONFIRM", "월세 | 이전: 월 55만 원 | 수정: 월 58만 원",
+                "그대로인 곳: 보증금 그대로");
         assertThat(info.references()).containsExactly(new ChatReference(ReferenceType.CURRENT_SCREEN, "비교 결과"));
         assertThat(info.actions().get(0).params()).containsEntry("screen", "S12").containsEntry("comparisonId", 9L);
+    }
+
+    @Test
+    void 비교가_있는_기존_대화는_B_getForChat의_그대로인_곳과_바뀐_곳을_비교_결과로_보낸다() {
+        Conversation conversation = Conversation.create(USER, CONTRACT, null, 9L, "요약");
+        ReflectionTestUtils.setField(conversation, "conversationId", 3L);
+        when(conversations.findByConversationIdAndUserId(3L, USER)).thenReturn(Optional.of(conversation));
+        when(comparisonService.getForChat(USER, 9L)).thenReturn(new ComparisonForChatInfo(9L, CONTRACT, "CONFIRMED",
+                "근무 시간 그대로", List.of(
+                        new Change("CHANGED", "AMOUNT", "시급", "10,000원", "10,500원", "시간당 500원 늘어요"),
+                        new Change("ADDED", "CLAUSE", "수습 기간", null, "3개월", null))));
+        gptReturns(gptAnswer("ANSWERED", "시급이 올랐어요.", List.of(), List.of("CURRENT_SCREEN"), false, null, List.of()));
+
+        pipeline.ask(USER, new AskCommand(3L, "뭐가 바뀌었어?", "S12", null, null, null, null));
+
+        assertThat(text(sentRequest())).contains("[비교 결과] 상태: CONFIRMED", "시급 | 이전: 10,000원 | 수정: 10,500원",
+                "수습 기간", "그대로인 곳: 근무 시간 그대로");
+        verify(comparisonService).getForChat(USER, 9L);
+    }
+
+    @Test
+    void 비교가_있는_기존_대화에서_B_getForChat이_COMPARISON_NOT_FOUND면_404이고_아무것도_저장하지_않는다() {
+        Conversation conversation = Conversation.create(USER, CONTRACT, null, 9L, "요약");
+        ReflectionTestUtils.setField(conversation, "conversationId", 3L);
+        when(conversations.findByConversationIdAndUserId(3L, USER)).thenReturn(Optional.of(conversation));
+        when(comparisonService.getForChat(USER, 9L)).thenThrow(new BusinessException(ErrorCode.COMPARISON_NOT_FOUND));
+
+        assertError(new AskCommand(3L, "뭐가 바뀌었어?", "S12", null, null, null, null), ErrorCode.COMPARISON_NOT_FOUND);
     }
 
     void assertError(AskCommand command, ErrorCode expected) {

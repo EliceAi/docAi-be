@@ -4,7 +4,7 @@ import com.team.docai.domain.analysis.dto.AnalysisChatInfo;
 import com.team.docai.domain.analysis.entity.AnalysisStatus;
 import com.team.docai.domain.chat.dto.LinkedDocumentInfo;
 import com.team.docai.domain.chat.entity.ChatRole;
-import com.team.docai.domain.chat.service.query.ComparisonReadOnlyQuery.ComparisonForChat;
+import com.team.docai.domain.comparison.dto.ComparisonForChatInfo.Change;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,7 +42,7 @@ record ChatContext(
         AnalysisChatInfo analysis,
         AnalysisStatus pendingStatus,
         AnalysisChatInfo.Clause focusClause,
-        ComparisonForChat comparison,
+        Comparison comparison,
         List<Source> sources,
         List<PastMessage> recent
 ) {
@@ -91,5 +91,14 @@ record ChatContext(
     }
 
     record PastMessage(ChatRole role, String content) {
+    }
+
+    /**
+     * 비교 결과. 모두 B {@code ComparisonService.getForChat} 에서 읽는다 (바뀐 곳은 change_id 순 최대 20).
+     *
+     * @param status PENDING_CONFIRM / CONFIRMED / DISCARDED / SUPERSEDED
+     */
+    record Comparison(Long comparisonId, Long previousContractId, String status, String unchangedSummary,
+                      List<Change> changes) {
     }
 }

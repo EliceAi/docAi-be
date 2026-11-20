@@ -15,7 +15,9 @@ import com.team.docai.domain.analysis.repository.AnalysisKeyTermRepository;
 import com.team.docai.domain.analysis.repository.AnalysisRepository;
 import com.team.docai.domain.analysis.repository.AnalysisResultReader;
 import com.team.docai.domain.contract.dto.ContractVersionInfo;
+import com.team.docai.domain.contract.dto.SimilarContractInfo;
 import com.team.docai.domain.contract.service.ContractService;
+import com.team.docai.domain.documenttype.service.DocumentTypeService;
 import com.team.docai.domain.law.service.LawSearchService;
 import com.team.docai.global.error.BusinessException;
 import com.team.docai.global.error.ErrorCode;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -56,18 +59,19 @@ class AnalysisQueryServiceTest {
     AnalysisClauseRelationRepository relationRepository = mock(AnalysisClauseRelationRepository.class);
     AnalysisResultReader reader = mock(AnalysisResultReader.class);
     ContractService contractService = mock(ContractService.class);
-    ContractReadOnlyQuery contractQuery = mock(ContractReadOnlyQuery.class);
+    DocumentTypeService documentTypeService = mock(DocumentTypeService.class);
     LawSearchService lawSearchService = mock(LawSearchService.class);
     SampleAnalysisReader sampleReader = mock(SampleAnalysisReader.class);
 
     AnalysisQueryService service;
+    Analysis analysis;
 
     @BeforeEach
     void setUp() {
         service = new AnalysisQueryService(analysisRepository, chunkRepository, keyTermRepository, clauseRepository,
-                refRepository, relationRepository, reader, contractService, contractQuery, lawSearchService, sampleReader,
+                refRepository, relationRepository, reader, contractService, documentTypeService, lawSearchService, sampleReader,
                 Clock.system(ZoneId.of("Asia/Seoul")));
-        Analysis analysis = mock(Analysis.class);
+        analysis = mock(Analysis.class);
         when(analysis.getAnalysisId()).thenReturn(ANALYSIS_ID);
         when(analysis.getVersionId()).thenReturn(VERSION_ID);
         when(analysis.getStatus()).thenReturn(AnalysisStatus.COMPLETED);
@@ -75,7 +79,8 @@ class AnalysisQueryServiceTest {
         when(analysisRepository.findById(ANALYSIS_ID)).thenReturn(Optional.of(analysis));
         when(contractService.getVersionOwner(USER, VERSION_ID))
                 .thenReturn(new ContractVersionInfo(1L, 1, 2, "근로계약서", 0));
-        when(contractQuery.findSimilarContract(any(), anyLong())).thenReturn(Optional.empty());
+        when(contractService.getSimilarContractInfo(any(), anyLong())).thenReturn(Optional.empty());
+        when(documentTypeService.getCheckLevel("EMPLOYMENT")).thenReturn("A");
         when(chunkRepository.findByAnalysisIdOrderByChunkNoAsc(ANALYSIS_ID)).thenReturn(List.of());
         when(keyTermRepository.findByAnalysisIdOrderBySortOrderAsc(ANALYSIS_ID)).thenReturn(List.of());
         when(reader.findCitedLawRefs(anyCollection())).thenReturn(List.of());
@@ -101,6 +106,54 @@ class AnalysisQueryServiceTest {
         assertThat(info.result().coverage().pageCount()).isEqualTo(5);
         assertThat(info.result().coverage().maskedCount()).isEqualTo(4);
         verify(contractService).getVersionOwner(USER, VERSION_ID);
+    }
+
+    @Test
+    void 결과_조회의_점검_깊이는_B_getCheckLevel_값을_쓴다() {
+        when(documentTypeService.getCheckLevel("EMPLOYMENT")).thenReturn("B");
+
+        assertThat(service.getResult(USER, ANALYSIS_ID).result().checkLevel()).isEqualTo("B");
+        verify(documentTypeService).getCheckLevel("EMPLOYMENT");
+    }
+
+    @Test
+    void 결과_조회는_문서_종류_코드가_없으면_B_getCheckLevel을_부르지_않고_점검_깊이를_null로_둔다() {
+        // getCheckLevel 은 null 코드에 UNSUPPORTED_DOCUMENT_TYPE 을 던져 읽기 트랜잭션을 rollback-only 로 만든다
+        when(analysis.getDocumentTypeCode()).thenReturn(null);
+
+        assertThat(service.getResult(USER, ANALYSIS_ID).result().checkLevel()).isNull();
+        verify(documentTypeService, never()).getCheckLevel(any());
+    }
+
+    @Test
+    void 결과_조회의_비슷한_계약서는_B_getSimilarContractInfo_값을_화면_시간대로_바꿔_쓴다() {
+        when(analysis.getSimilarContractId()).thenReturn(77L);
+        OffsetDateTime analyzedAt = OffsetDateTime.parse("2026-11-01T01:30:00Z");
+        when(contractService.getSimilarContractInfo(USER, 77L))
+                .thenReturn(Optional.of(new SimilarContractInfo(77L, "작년 카페 근로계약서", analyzedAt, 3)));
+
+        AnalysisResultInfo.SimilarContract similar = service.getResult(USER, ANALYSIS_ID).result().similarContract();
+
+        assertThat(similar.contractId()).isEqualTo(77L);
+        assertThat(similar.title()).isEqualTo("작년 카페 근로계약서");
+        assertThat(similar.analyzedAt()).isEqualTo(OffsetDateTime.parse("2026-11-01T10:30:00+09:00"));
+        assertThat(similar.scheduleCount()).isEqualTo(3L);
+    }
+
+    @Test
+    void 결과_조회는_비슷한_계약서를_B가_못_찾으면_null() {
+        when(analysis.getSimilarContractId()).thenReturn(77L);
+
+        assertThat(service.getResult(USER, ANALYSIS_ID).result().similarContract()).isNull();
+        verify(contractService).getSimilarContractInfo(USER, 77L);
+    }
+
+    @Test
+    void 결과_조회는_비슷한_계약서가_자기_자신이면_B를_부르지_않고_null() {
+        when(analysis.getSimilarContractId()).thenReturn(1L);
+
+        assertThat(service.getResult(USER, ANALYSIS_ID).result().similarContract()).isNull();
+        verify(contractService, never()).getSimilarContractInfo(any(), anyLong());
     }
 
     @Test
