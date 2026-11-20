@@ -10,7 +10,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import java.time.*;
 import java.util.*;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -47,10 +46,10 @@ class ScheduleDueNotificationBatchTest {
   when(schedules.createDueNotificationIfMatches(anyLong(),any(),anyInt(),any(),any())).thenAnswer(inv->{
    Long id=inv.getArgument(0);
    BiFunction<String,String,String> titleFormatter=inv.getArgument(3);
-   Function<ScheduleDueTargetInfo,String> subTitleResolver=inv.getArgument(4);
+   String subTitle=inv.getArgument(4);
    ScheduleDueTargetInfo t=targetById.get(id);
    generatedTitles.put(id,titleFormatter.apply(t.dateKind(),t.title()));
-   generatedSubTitles.put(id,subTitleResolver.apply(t));
+   generatedSubTitles.put(id,subTitle);
    return true;
   });
 
@@ -80,9 +79,10 @@ class ScheduleDueNotificationBatchTest {
    new ScheduleDueTargetInfo(2L,user,10L,"MOVE_IN","입주·전입신고",d1),
    new ScheduleDueTargetInfo(3L,user,10L,"MOVE_IN","입주·전입신고",d0)
   ));
-  when(schedules.createDueNotificationIfMatches(eq(1L),eq(d7),eq(7),any(),any())).thenReturn(true);
-  when(schedules.createDueNotificationIfMatches(eq(2L),eq(d1),eq(1),any(),any())).thenThrow(new DataIntegrityViolationException("uq_notification_due"));
-  when(schedules.createDueNotificationIfMatches(eq(3L),eq(d0),eq(0),any(),any())).thenReturn(false);
+  when(contracts.getSummary(user,10L)).thenReturn(new ContractSummaryInfo(10L,"원룸 계약서",true,null));
+  when(schedules.createDueNotificationIfMatches(eq(1L),eq(d7),eq(7),any(),eq("원룸 계약서"))).thenReturn(true);
+  when(schedules.createDueNotificationIfMatches(eq(2L),eq(d1),eq(1),any(),eq("원룸 계약서"))).thenThrow(new DataIntegrityViolationException("uq_notification_due"));
+  when(schedules.createDueNotificationIfMatches(eq(3L),eq(d0),eq(0),any(),eq("원룸 계약서"))).thenReturn(false);
 
   assertEquals(1,batch.run());
  }

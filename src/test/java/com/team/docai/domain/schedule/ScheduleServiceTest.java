@@ -94,15 +94,15 @@ class ScheduleServiceTest {
 
   when(repo.lockById(1L)).thenReturn(Optional.of(s));
   when(notifications.createScheduleDue(user,1L,0,expectedDate,"오늘 입주·전입신고 마감일이에요","원룸 계약서")).thenReturn(true);
-  assertTrue(service.createDueNotificationIfMatches(1L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요",info->"원룸 계약서"));
+  assertTrue(service.createDueNotificationIfMatches(1L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요","원룸 계약서"));
 
   // Date concurrently changed before lock acquired -> skip without creating stale notification
   ReflectionTestUtils.setField(s,"date",LocalDate.of(2026,11,25));
-  assertFalse(service.createDueNotificationIfMatches(1L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요",info->"원룸 계약서"));
+  assertFalse(service.createDueNotificationIfMatches(1L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요","원룸 계약서"));
 
   // Schedule concurrently deleted -> skip
   when(repo.lockById(2L)).thenReturn(Optional.empty());
-  assertFalse(service.createDueNotificationIfMatches(2L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요",info->"원룸 계약서"));
+  assertFalse(service.createDueNotificationIfMatches(2L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요","원룸 계약서"));
 
   verify(notifications,times(1)).createScheduleDue(any(),any(),anyInt(),any(),any(),any());
  }

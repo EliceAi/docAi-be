@@ -55,12 +55,13 @@ public class ScheduleDueNotificationBatch {
    int offset=(int)ChronoUnit.DAYS.between(today,s.date());
    if(!dueOffsets.contains(offset))continue;
    try{
+    String subTitle=resolveContractTitle(s);
     boolean inserted=schedules.createDueNotificationIfMatches(
      s.scheduleId(),
      s.date(),
      offset,
      (dateKind,scheduleTitle)->formatTitle(offset,dateKind,scheduleTitle),
-     this::resolveContractTitle
+     subTitle
     );
     if(inserted)created++;
    }catch(DataIntegrityViolationException e){
@@ -101,7 +102,8 @@ public class ScheduleDueNotificationBatch {
  private String resolveContractTitle(ScheduleDueTargetInfo s){
   if(s.contractId()==null)return null;
   try{
-   return contracts.getSummary(s.userId(),s.contractId()).title();
+   var summary=contracts.getSummary(s.userId(),s.contractId());
+   return summary==null?null:summary.title();
   }catch(BusinessException e){
    if(e.getErrorCode()==ErrorCode.CONTRACT_NOT_FOUND)return null;
    throw e;

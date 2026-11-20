@@ -54,7 +54,7 @@ public class ScheduleService {
   LocalDate expectedDate,
   int dueOffset,
   BiFunction<String,String,String> titleFormatter,
-  Function<ScheduleDueTargetInfo,String> subTitleResolver
+  String subTitle
  ){
   if(scheduleId==null||expectedDate==null||dueOffset<0||titleFormatter==null)return false;
   var notifications=notificationProvider==null?null:notificationProvider.getIfAvailable();
@@ -63,11 +63,8 @@ public class ScheduleService {
   if(lockedOpt.isEmpty())return false;
   Schedule locked=lockedOpt.get();
   if(!expectedDate.equals(locked.getDate()))return false;
-  ScheduleDueTargetInfo fresh=new ScheduleDueTargetInfo(
-   locked.getScheduleId(),locked.getUserId(),locked.getContractId(),locked.getDateKind(),locked.getTitle(),locked.getDate());
-  String title=titleFormatter.apply(fresh.dateKind(),fresh.title());
-  String subTitle=subTitleResolver==null?null:subTitleResolver.apply(fresh);
-  return notifications.createScheduleDue(fresh.userId(),fresh.scheduleId(),dueOffset,fresh.date(),title,subTitle);
+  String title=titleFormatter.apply(locked.getDateKind(),locked.getTitle());
+  return notifications.createScheduleDue(locked.getUserId(),locked.getScheduleId(),dueOffset,locked.getDate(),title,subTitle);
  }
  public List<UpcomingScheduleInfo> upcoming(UUID userId,int limit){
   if(limit<1||limit>10)throw new BusinessException(ErrorCode.INVALID_INPUT);
