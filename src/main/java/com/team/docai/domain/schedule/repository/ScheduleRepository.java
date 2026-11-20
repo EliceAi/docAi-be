@@ -16,4 +16,7 @@ public interface ScheduleRepository extends JpaRepository<Schedule,Long> {
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select s from Schedule s where s.scheduleId=:id and s.userId=:user")
  Optional<Schedule> lockOwned(@Param("user") UUID user,@Param("id") Long id);
+ @Lock(LockModeType.PESSIMISTIC_WRITE)
+ @Query("select s from Schedule s where s.scheduleId=:id")
+ Optional<Schedule> lockById(@Param("id") Long id);
 }

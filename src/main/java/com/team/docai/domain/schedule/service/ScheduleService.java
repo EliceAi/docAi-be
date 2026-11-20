@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 @Service @Transactional(readOnly=true)
@@ -45,7 +46,28 @@ public class ScheduleService {
  public List<ScheduleDueTargetInfo> findDueTargets(Collection<LocalDate> dates){
   if(dates==null||dates.isEmpty())return List.of();
   return schedules.findByDateInOrderByDateAscScheduleIdAsc(dates).stream()
-   .map(s->new ScheduleDueTargetInfo(s.getScheduleId(),s.getUserId(),s.getContractId(),s.getTitle(),s.getDate())).toList();
+   .map(s->new ScheduleDueTargetInfo(s.getScheduleId(),s.getUserId(),s.getContractId(),s.getDateKind(),s.getTitle(),s.getDate())).toList();
+ }
+ @Transactional
+ public boolean createDueNotificationIfMatches(
+  Long scheduleId,
+  LocalDate expectedDate,
+  int dueOffset,
+  BiFunction<String,String,String> titleFormatter,
+  Function<ScheduleDueTargetInfo,String> subTitleResolver
+ ){
+  if(scheduleId==null||expectedDate==null||dueOffset<0||titleFormatter==null)return false;
+  var notifications=notificationProvider==null?null:notificationProvider.getIfAvailable();
+  if(notifications==null)return false;
+  Optional<Schedule> lockedOpt=schedules.lockById(scheduleId);
+  if(lockedOpt.isEmpty())return false;
+  Schedule locked=lockedOpt.get();
+  if(!expectedDate.equals(locked.getDate()))return false;
+  ScheduleDueTargetInfo fresh=new ScheduleDueTargetInfo(
+   locked.getScheduleId(),locked.getUserId(),locked.getContractId(),locked.getDateKind(),locked.getTitle(),locked.getDate());
+  String title=titleFormatter.apply(fresh.dateKind(),fresh.title());
+  String subTitle=subTitleResolver==null?null:subTitleResolver.apply(fresh);
+  return notifications.createScheduleDue(fresh.userId(),fresh.scheduleId(),dueOffset,fresh.date(),title,subTitle);
  }
  public List<UpcomingScheduleInfo> upcoming(UUID userId,int limit){
   if(limit<1||limit>10)throw new BusinessException(ErrorCode.INVALID_INPUT);

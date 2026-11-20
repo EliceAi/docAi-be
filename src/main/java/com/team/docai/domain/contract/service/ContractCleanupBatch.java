@@ -19,20 +19,21 @@ import java.time.*;
 import java.util.*;
 
 /**
- * 7일 정리 배치 (담당_연결지점.md B 담당 배치).
+ * 7일 정리 배치 (담당_연결지점.md B 담당 배치). Asia/Seoul 기준 매일 새벽 3시 실행.
  * 1) 7일 이상 보관되지 않은 미보관 계약서(archived=false, deleted_at IS NULL, created_at < now-7d):
- *    분석 중이 아니면 소프트 삭제, 관련 확정 전 비교 DISCARDED 처리, 저장된 이미지 파일 정리.
+ *    관련 모든 버전 중 분석 중인 버전이 하나라도 있으면 제외.
+ *    분석 중이 아니면 소프트 삭제(deleted_at), 관련 미확정 비교 DISCARDED 처리, 커밋 후 이미지 파일 물리 삭제.
+ *    (분석 기록과 알림 기록은 유지)
  * 2) 이미 소프트 삭제된 계약서(deleted_at IS NOT NULL):
- *    남아 있는 페이지 이미지 파일 정리 (DB 기록과 분석·알림 이력은 유지).
- * 3) idempotency_record 정리: 보관 기간은 명세상 미확정("일정 기간 지나면 삭제")이므로
- *    docai.batch.cleanup.idempotency-retention-days가 양수로 설정된 경우에만 실행한다.
- * 실행 시각(cron)도 명세상 미확정이므로 docai.batch.cleanup.enabled=true 및 cron 설정 시 동작한다.
+ *    분석 중이 아닌 경우 남아 있는 페이지 이미지 파일 물리 삭제 (DB 이력 유지).
+ * 3) 중요 요청 기록(idempotency_record): 생성 후 24시간 경과 시 삭제.
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix="docai.batch.cleanup",name="enabled",havingValue="true",matchIfMissing=false)
+@ConditionalOnProperty(prefix="docai.batch.cleanup",name="enabled",havingValue="true",matchIfMissing=true)
 public class ContractCleanupBatch {
  static final int CONTRACT_RETENTION_DAYS=7;
+ static final int DEFAULT_IDEMPOTENCY_RETENTION_HOURS=24;
 
  private final ContractRepository contracts;
  private final ContractVersionRepository versions;
@@ -42,7 +43,7 @@ public class ContractCleanupBatch {
  private final ObjectProvider<ComparisonService> comparisonProvider;
  private final ObjectProvider<JdbcTemplate> jdbcProvider;
  private final Clock clock;
- private final Integer idempotencyRetentionDays;
+ private final int idempotencyRetentionHours;
 
  @Autowired
  public ContractCleanupBatch(
@@ -54,7 +55,7 @@ public class ContractCleanupBatch {
   ObjectProvider<ComparisonService> comparisonProvider,
   ObjectProvider<JdbcTemplate> jdbcProvider,
   Clock clock,
-  @Value("${docai.batch.cleanup.idempotency-retention-days:#{null}}") Integer idempotencyRetentionDays
+  @Value("${docai.batch.cleanup.idempotency-retention-hours:24}") int idempotencyRetentionHours
  ){
   this.contracts=contracts;
   this.versions=versions;
@@ -64,44 +65,52 @@ public class ContractCleanupBatch {
   this.comparisonProvider=comparisonProvider;
   this.jdbcProvider=jdbcProvider;
   this.clock=clock;
-  this.idempotencyRetentionDays=idempotencyRetentionDays;
+  this.idempotencyRetentionHours=idempotencyRetentionHours>0?idempotencyRetentionHours:DEFAULT_IDEMPOTENCY_RETENTION_HOURS;
  }
 
- @Scheduled(cron="${docai.batch.cleanup.cron:-}",zone="Asia/Seoul")
+ @Scheduled(cron="${docai.batch.cleanup.cron:0 0 3 * * *}",zone="Asia/Seoul")
  @Transactional
  public int run(){
   OffsetDateTime now=OffsetDateTime.now(clock);
-  OffsetDateTime cutoff=now.minusDays(CONTRACT_RETENTION_DAYS);
+  OffsetDateTime contractCutoff=now.minusDays(CONTRACT_RETENTION_DAYS);
+  OffsetDateTime idempotencyCutoff=now.minusHours(idempotencyRetentionHours);
   int cleanedContracts=0;
   Set<String> keysToDelete=new LinkedHashSet<>();
 
   var analysis=analysisProvider==null?null:analysisProvider.getIfAvailable();
   var comparison=comparisonProvider==null?null:comparisonProvider.getIfAvailable();
 
-  for(Contract c:contracts.findByArchivedFalseAndDeletedAtIsNullAndCreatedAtBefore(cutoff)){
-   Optional<Contract> lockedOpt=contracts.lockActive(c.getContractId());
-   if(lockedOpt.isEmpty())continue;
-   Contract locked=lockedOpt.get();
-   if(locked.isArchived())continue;
-   List<ContractVersion> verList=versions.findByContractIdOrderByVersionNoDesc(locked.getContractId());
-   boolean analyzing=analysis!=null&&verList.stream().anyMatch(v->analysis.getVersionState(v.getVersionId()).hasAnalyzing());
-   if(analyzing)continue;
-   locked.softDelete(now);
-   contracts.save(locked);
-   if(comparison!=null)comparison.discardForRevisedContract(locked.getContractId());
-   for(ContractVersion v:verList){
-    for(ContractPage p:pages.findByVersionIdOrderByPageNoAsc(v.getVersionId())){
-     if(p.getImageKey()!=null)keysToDelete.add(p.getImageKey());
+  if(analysis==null){
+   log.warn("7일 정리 배치: AnalysisService를 찾을 수 없어 계약서 정리를 건너뜁니다.");
+  }else{
+   for(Contract c:contracts.findByArchivedFalseAndDeletedAtIsNullAndCreatedAtBefore(contractCutoff)){
+    Optional<Contract> lockedOpt=contracts.lockActive(c.getContractId());
+    if(lockedOpt.isEmpty())continue;
+    Contract locked=lockedOpt.get();
+    if(locked.isArchived())continue;
+    List<ContractVersion> verList=versions.findByContractIdOrderByVersionNoDesc(locked.getContractId());
+    boolean analyzing=verList.stream().anyMatch(v->analysis.getVersionState(v.getVersionId()).hasAnalyzing());
+    if(analyzing)continue;
+    locked.softDelete(now);
+    contracts.save(locked);
+    if(comparison!=null)comparison.discardForRevisedContract(locked.getContractId());
+    for(ContractVersion v:verList){
+     for(ContractPage p:pages.findByVersionIdOrderByPageNoAsc(v.getVersionId())){
+      if(p.getImageKey()!=null)keysToDelete.add(p.getImageKey());
+     }
     }
+    cleanedContracts++;
    }
-   cleanedContracts++;
-  }
-  contracts.flush();
+   contracts.flush();
 
-  for(Contract deleted:contracts.findByDeletedAtIsNotNull()){
-   for(ContractVersion v:versions.findByContractIdOrderByVersionNoDesc(deleted.getContractId())){
-    for(ContractPage p:pages.findByVersionIdOrderByPageNoAsc(v.getVersionId())){
-     if(p.getImageKey()!=null)keysToDelete.add(p.getImageKey());
+   for(Contract deleted:contracts.findByDeletedAtIsNotNull()){
+    List<ContractVersion> verList=versions.findByContractIdOrderByVersionNoDesc(deleted.getContractId());
+    boolean analyzing=verList.stream().anyMatch(v->analysis.getVersionState(v.getVersionId()).hasAnalyzing());
+    if(analyzing)continue;
+    for(ContractVersion v:verList){
+     for(ContractPage p:pages.findByVersionIdOrderByPageNoAsc(v.getVersionId())){
+      if(p.getImageKey()!=null)keysToDelete.add(p.getImageKey());
+     }
     }
    }
   }
@@ -110,13 +119,13 @@ public class ContractCleanupBatch {
 
   var jdbc=jdbcProvider==null?null:jdbcProvider.getIfAvailable();
   int deletedIdempotency=0;
-  if(jdbc!=null&&idempotencyRetentionDays!=null&&idempotencyRetentionDays>0){
-   deletedIdempotency=jdbc.update("DELETE FROM idempotency_record WHERE created_at < ?",now.minusDays(idempotencyRetentionDays));
+  if(jdbc!=null){
+   deletedIdempotency=jdbc.update("DELETE FROM idempotency_record WHERE created_at < ?",idempotencyCutoff);
   }
 
   if(cleanedContracts>0||deletedIdempotency>0){
-   log.info("7일 정리 배치 완료: cutoff={}, cleanedContracts={}, scheduledImages={}, deletedIdempotency={}",
-    cutoff,cleanedContracts,keysToDelete.size(),deletedIdempotency);
+   log.info("7일 정리 배치 완료: contractCutoff={}, idempotencyCutoff={}, cleanedContracts={}, scheduledImages={}, deletedIdempotency={}",
+    contractCutoff,idempotencyCutoff,cleanedContracts,keysToDelete.size(),deletedIdempotency);
   }
   return cleanedContracts;
  }

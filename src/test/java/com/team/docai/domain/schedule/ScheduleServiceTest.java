@@ -84,4 +84,26 @@ class ScheduleServiceTest {
   when(analysis.getRef(user,102L)).thenThrow(new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
   assertEquals(ErrorCode.ANALYSIS_NOT_FOUND,assertThrows(BusinessException.class,()->service.getCandidates(user,102L)).getErrorCode());
  }
+ @Test void createDueNotificationIfMatchesGuardsConcurrentDateChangeAndDeletion() throws Exception {
+  when(notifProvider.getIfAvailable()).thenReturn(notifications);
+  var s=row(5L);
+  ReflectionTestUtils.setField(s,"userId",user);
+  ReflectionTestUtils.setField(s,"dateKind","MOVE_IN");
+  ReflectionTestUtils.setField(s,"title","입주·전입신고");
+  LocalDate expectedDate=LocalDate.of(2026,11,18);
+
+  when(repo.lockById(1L)).thenReturn(Optional.of(s));
+  when(notifications.createScheduleDue(user,1L,0,expectedDate,"오늘 입주·전입신고 마감일이에요","원룸 계약서")).thenReturn(true);
+  assertTrue(service.createDueNotificationIfMatches(1L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요",info->"원룸 계약서"));
+
+  // Date concurrently changed before lock acquired -> skip without creating stale notification
+  ReflectionTestUtils.setField(s,"date",LocalDate.of(2026,11,25));
+  assertFalse(service.createDueNotificationIfMatches(1L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요",info->"원룸 계약서"));
+
+  // Schedule concurrently deleted -> skip
+  when(repo.lockById(2L)).thenReturn(Optional.empty());
+  assertFalse(service.createDueNotificationIfMatches(2L,expectedDate,0,(dk,t)->"오늘 입주·전입신고 마감일이에요",info->"원룸 계약서"));
+
+  verify(notifications,times(1)).createScheduleDue(any(),any(),anyInt(),any(),any(),any());
+ }
 }

@@ -16,18 +16,18 @@ import java.util.*;
 
 /**
  * 일정 알림 배치 (D-N).
- * 실행 시각(cron)과 알림 시점(offsets)은 명세상 팀 협의 항목이므로 임의 기본값을 강제하지 않는다.
- * 팀 협의 후 docai.batch.schedule-due.enabled=true, cron, offsets를 설정하면 동작한다.
+ * Asia/Seoul 기준 매일 오전 9시 실행, D-7 / D-1 / D-0(당일) 알림 생성.
+ * 건별 schedule 행 잠금(PESSIMISTIC_WRITE) 후 날짜 재검증으로 배치 실행 중 일정 수정·삭제 동시성 충돌을 방지한다.
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix="docai.batch.schedule-due",name="enabled",havingValue="true",matchIfMissing=false)
+@ConditionalOnProperty(prefix="docai.batch.schedule-due",name="enabled",havingValue="true",matchIfMissing=true)
 public class ScheduleDueNotificationBatch {
+ static final List<Integer> DEFAULT_DUE_OFFSETS=List.of(7,1,0);
  private static final ZoneId SEOUL=ZoneId.of("Asia/Seoul");
 
  private final ScheduleService schedules;
  private final ContractService contracts;
- private final NotificationService notifications;
  private final Clock clock;
  private final List<Integer> dueOffsets;
 
@@ -35,18 +35,16 @@ public class ScheduleDueNotificationBatch {
  public ScheduleDueNotificationBatch(
   ScheduleService schedules,
   ContractService contracts,
-  NotificationService notifications,
   Clock clock,
-  @Value("${docai.batch.schedule-due.offsets:}") List<Integer> dueOffsets
+  @Value("${docai.batch.schedule-due.offsets:7,1,0}") List<Integer> dueOffsets
  ){
   this.schedules=schedules;
   this.contracts=contracts;
-  this.notifications=notifications;
   this.clock=clock;
-  this.dueOffsets=dueOffsets==null?List.of():dueOffsets.stream().filter(o->o!=null&&o>=0).distinct().toList();
+  this.dueOffsets=dueOffsets==null||dueOffsets.isEmpty()?DEFAULT_DUE_OFFSETS:dueOffsets.stream().filter(o->o!=null&&o>=0).distinct().toList();
  }
 
- @Scheduled(cron="${docai.batch.schedule-due.cron:-}",zone="Asia/Seoul")
+ @Scheduled(cron="${docai.batch.schedule-due.cron:0 0 9 * * *}",zone="Asia/Seoul")
  public int run(){
   if(dueOffsets.isEmpty())return 0;
   LocalDate today=LocalDate.now(clock.withZone(SEOUL));
@@ -56,12 +54,15 @@ public class ScheduleDueNotificationBatch {
   for(ScheduleDueTargetInfo s:targets){
    int offset=(int)ChronoUnit.DAYS.between(today,s.date());
    if(!dueOffsets.contains(offset))continue;
-   String title=formatTitle(offset,s.title());
-   String subTitle=resolveContractTitle(s);
    try{
-    if(notifications.createScheduleDue(s.userId(),s.scheduleId(),offset,s.date(),title,subTitle)){
-     created++;
-    }
+    boolean inserted=schedules.createDueNotificationIfMatches(
+     s.scheduleId(),
+     s.date(),
+     offset,
+     (dateKind,scheduleTitle)->formatTitle(offset,dateKind,scheduleTitle),
+     this::resolveContractTitle
+    );
+    if(inserted)created++;
    }catch(DataIntegrityViolationException e){
     log.debug("이미 생성된 일정 알림 건너뜀: scheduleId={}, offset={}, dueDate={}",s.scheduleId(),offset,s.date());
    }catch(RuntimeException e){
@@ -72,8 +73,29 @@ public class ScheduleDueNotificationBatch {
   return created;
  }
 
- static String formatTitle(int offset,String scheduleTitle){
-  return "D-"+offset+" · "+scheduleTitle;
+ static boolean isMoveInSchedule(String dateKind,String scheduleTitle){
+  if("MOVE_IN".equals(dateKind))return true;
+  if(scheduleTitle==null)return false;
+  return scheduleTitle.contains("입주")||scheduleTitle.contains("전입신고");
+ }
+
+ static String formatTitle(int offset,String dateKind,String scheduleTitle){
+  if(isMoveInSchedule(dateKind,scheduleTitle)){
+   if(offset==0)return "오늘 입주·전입신고 마감일이에요";
+   return "D-"+offset+" · 입주,전입신고가 다가와요";
+  }
+  String safeName=scheduleTitle==null||scheduleTitle.isBlank()?"일정":scheduleTitle.strip();
+  if(offset==0)return "오늘 "+safeName+" 마감일이에요";
+  return "D-"+offset+" · "+safeName+subjectParticle(safeName)+" 다가와요";
+ }
+
+ private static String subjectParticle(String word){
+  if(word==null||word.isEmpty())return "가";
+  char last=word.charAt(word.length()-1);
+  if(last>=0xAC00&&last<=0xD7A3){
+   return (last-0xAC00)%28!=0?"이":"가";
+  }
+  return "이(가)";
  }
 
  private String resolveContractTitle(ScheduleDueTargetInfo s){
