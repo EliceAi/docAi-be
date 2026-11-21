@@ -315,6 +315,82 @@ class LawLoaderTest {
     }
 
     @Test
+    void 민간임대주택특별법과_시행령을_적재하고_임대차계약서_관련_법령으로_둔다() {
+        assertThat(LawCatalog.TARGETS).contains(
+                new LawCatalog.Target("민간임대주택에 관한 특별법", "민간임대주택에 관한 특별법", null),
+                new LawCatalog.Target("민간임대주택에 관한 특별법 시행령", "민간임대주택에 관한 특별법", "민간임대주택에 관한 특별법"));
+        assertThat(LawCatalog.DOCUMENT_TYPE_LAWS).contains(
+                new LawCatalog.DocumentTypeLawSeed("LEASE", "민간임대주택에 관한 특별법", false),
+                new LawCatalog.DocumentTypeLawSeed("LEASE", "민간임대주택에 관한 특별법 시행령", false));
+        // 문서별 관련 법령은 적재 대상에 있는 법령만 가리킨다
+        java.util.Set<String> targetNames = new java.util.HashSet<>();
+        LawCatalog.TARGETS.forEach(t -> targetNames.add(t.name()));
+        assertThat(LawCatalog.DOCUMENT_TYPE_LAWS).allSatisfy(d -> assertThat(targetNames).contains(d.lawName()));
+    }
+
+    static final String PRIVATE_RENTAL = "민간임대주택에 관한 특별법";
+    static final String PRIVATE_RENTAL_DECREE = "민간임대주택에 관한 특별법 시행령";
+
+    /** 근로기준법 목록 샘플의 이름만 바꾼 민간임대법 목록 (법률 MST 285279, 시행령 270551, 시행규칙 269393). */
+    static String privateRentalList() {
+        return LIST.replace("근로기준법 시행령", PRIVATE_RENTAL_DECREE)
+                .replace("근로기준법 시행규칙", "민간임대주택에 관한 특별법 시행규칙")
+                .replace("\"근로기준법\"", "\"" + PRIVATE_RENTAL + "\"");
+    }
+
+    /** 이름만 바꾼 본문: MST 에 따라 법률 또는 시행령. */
+    LawLoader privateRentalLoader() {
+        String decreeBody = LawTestSupport.resource("labor_standards_decree_body_sample.json");
+        String list = privateRentalList();
+        server.handler(q -> {
+            if (q.startsWith("lawSearch")) {
+                return new FakeLawServer.Reply(200, list);
+            }
+            if (q.contains("MST=285279")) {
+                return new FakeLawServer.Reply(200, decreeBody.replace("근로기준법 시행령", PRIVATE_RENTAL));
+            }
+            if (q.contains("MST=270551")) {
+                return new FakeLawServer.Reply(200, decreeBody.replace("근로기준법 시행령", PRIVATE_RENTAL_DECREE));
+            }
+            return new FakeLawServer.Reply(500, "부르면 안 됨");
+        });
+        LawProperties props = LawTestSupport.properties(server.baseUrl(), Duration.ofSeconds(1), Duration.ofSeconds(1), 3, false);
+        return new LawLoader(LawTestSupport.client(props, LawTestSupport.FAKE_OC), cache,
+                new LawResponseParser(new ObjectMapper()), writer, props);
+    }
+
+    @Test
+    void 일부만_적재할_때_공백_없는_민간임대주택특별법_이름이면_법률만_고르고_시행령은_고르지_않는다() {
+        LawLoadReport report = privateRentalLoader().load(java.util.Set.of("민간임대주택에관한특별법"));
+
+        assertThat(server.received()).extracting(FakeLawServer.Received::path).containsExactly("lawSearch.do", "lawService.do");
+        assertThat(server.received().get(0).query()).contains("민간임대주택");
+        assertThat(server.received().get(1).query()).contains("MST=285279");
+        assertThat(report.laws()).extracting(LawLoadReport.LawResult::name).containsExactly(PRIVATE_RENTAL);
+        assertThat(report.laws().get(0).status()).isEqualTo(Status.LOADED);
+        org.mockito.ArgumentCaptor<LawListItem> saved = org.mockito.ArgumentCaptor.forClass(LawListItem.class);
+        verify(writer, org.mockito.Mockito.times(1)).saveVersion(saved.capture(), any(), any());
+        assertThat(saved.getValue().name()).isEqualTo(PRIVATE_RENTAL);
+        assertThat(saved.getValue().mst()).isEqualTo("285279");
+        verify(writer, never()).isLoaded(org.mockito.ArgumentMatchers.argThat(i -> !PRIVATE_RENTAL.equals(i.name())));
+        verify(writer, never()).linkParent(anyString(), anyString());
+    }
+
+    @Test
+    void 일부만_적재할_때_민간임대주택특별법_시행령_이름이면_시행령만_고른다() {
+        LawLoadReport report = privateRentalLoader().load(java.util.Set.of("민간임대주택에관한특별법시행령"));
+
+        assertThat(server.received()).extracting(FakeLawServer.Received::path).containsExactly("lawSearch.do", "lawService.do");
+        assertThat(server.received().get(1).query()).contains("MST=270551");
+        assertThat(report.laws()).extracting(LawLoadReport.LawResult::name).containsExactly(PRIVATE_RENTAL_DECREE);
+        org.mockito.ArgumentCaptor<LawListItem> saved = org.mockito.ArgumentCaptor.forClass(LawListItem.class);
+        verify(writer, org.mockito.Mockito.times(1)).saveVersion(saved.capture(), any(), any());
+        assertThat(saved.getValue().name()).isEqualTo(PRIVATE_RENTAL_DECREE);
+        verify(writer, never()).isLoaded(org.mockito.ArgumentMatchers.argThat(i -> !PRIVATE_RENTAL_DECREE.equals(i.name())));
+        verify(writer).linkParent(PRIVATE_RENTAL_DECREE, PRIVATE_RENTAL);
+    }
+
+    @Test
     void 일부만_적재하면_대상_법령의_목록_본문만_부르고_그_법령만_저장한다() {
         String decreeBody = LawTestSupport.resource("labor_standards_decree_body_sample.json");
         server.handler(q -> new FakeLawServer.Reply(200, q.startsWith("lawSearch") ? LIST : decreeBody));

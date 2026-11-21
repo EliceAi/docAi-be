@@ -38,7 +38,9 @@ public final class LawCatalog {
             new Target("근로자퇴직급여 보장법 시행령", "근로자퇴직급여 보장법", "근로자퇴직급여 보장법"),
             new Target("주택임대차보호법", "주택임대차보호법", null),
             new Target("주택임대차보호법 시행령", "주택임대차보호법", "주택임대차보호법"),
-            new Target("민법", "민법", null));
+            new Target("민법", "민법", null),
+            new Target("민간임대주택에 관한 특별법", "민간임대주택에 관한 특별법", null),
+            new Target("민간임대주택에 관한 특별법 시행령", "민간임대주택에 관한 특별법", "민간임대주택에 관한 특별법"));
 
     /** 사람이 붙인 줄임말 (law_alias.source = MANUAL). 키: 줄임말, 값: 법령명. API 법령약칭명은 따로 넣는다. */
     public static final Map<String, String> MANUAL_ALIASES;
@@ -58,7 +60,11 @@ public final class LawCatalog {
     public record DocumentTypeLawSeed(String documentTypeCode, String lawName, boolean core) {
     }
 
-    /** 문서 종류별 관련 법령 (2026-11-17 팀 지시, 2026-11-19 시행령 2개 추가: 수습 감액·퇴직금 산정 근거). document_type 은 B 소유라 행이 없으면 그 종류만 건너뛴다. */
+    /**
+     * 문서 종류별 관련 법령 (2026-11-17 팀 지시, 2026-11-19 시행령 2개 추가: 수습 감액·퇴직금 산정 근거,
+     * 2026-11-21 민간임대주택특별법·시행령 추가: 민간임대 표준임대차계약서의 임대료 증액 제한·임대보증금 보증 근거).
+     * document_type 은 B 소유라 행이 없으면 그 종류만 건너뛴다.
+     */
     public static final List<DocumentTypeLawSeed> DOCUMENT_TYPE_LAWS = List.of(
             new DocumentTypeLawSeed("EMPLOYMENT", "근로기준법", true),
             new DocumentTypeLawSeed("EMPLOYMENT", "근로기준법 시행령", false),
@@ -68,7 +74,10 @@ public final class LawCatalog {
             new DocumentTypeLawSeed("EMPLOYMENT", "근로자퇴직급여 보장법 시행령", false),
             new DocumentTypeLawSeed("LEASE", "주택임대차보호법", true),
             new DocumentTypeLawSeed("LEASE", "주택임대차보호법 시행령", false),
-            new DocumentTypeLawSeed("LEASE", "민법", false));
+            new DocumentTypeLawSeed("LEASE", "민법", false),
+            // 민간임대사업자 등록 주택에만 적용되어 주택임대차보호법보다 앞서 정렬되지 않게 비핵심
+            new DocumentTypeLawSeed("LEASE", "민간임대주택에 관한 특별법", false),
+            new DocumentTypeLawSeed("LEASE", "민간임대주택에 관한 특별법 시행령", false));
 
     /**
      * 숫자 규칙 기준값. 적재 마지막 단계에서 넣는다.
