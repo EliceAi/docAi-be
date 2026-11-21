@@ -31,7 +31,8 @@ import java.util.regex.Pattern;
  */
 final class EvidenceCollector {
 
-    static final String FALLBACK_NOTE = "[현행 조문으로 대신함: 계약일 당시 조문과 다를 수 있음]\n";
+    /** 기준일 뒤에 시행된 현행 조문으로 대신했을 때의 표시. 시행 예정 조문이면 {@link LawArticleInfo#substituteNote} 가 다른 표시를 준다. */
+    static final String FALLBACK_NOTE = LawArticleInfo.CURRENT_SUBSTITUTE_NOTE;
     private static final Pattern LABEL_NUMBER = Pattern.compile("^[A-Za-z]+(\\d+)$");
 
     /** 조항에 이미 붙은 근거. */
@@ -51,6 +52,7 @@ final class EvidenceCollector {
 
     private final Long clauseId;
     private final LocalDate baseDate;
+    private final LocalDate today;
     private final int nextNumberStart;
     private final int lawRoom;
     private final Set<Long> usedLaws = new HashSet<>();
@@ -59,11 +61,13 @@ final class EvidenceCollector {
 
     /**
      * @param guidanceCandidates 이 조항 꼬리표의 해석 메모 (없으면 빈 목록). 이미 붙은 메모가 아닌 첫 번째 것 하나만 쓴다
+     * @param today              분석일 (시행 예정 조문 구분용, {@link RuleValues#analysisDate})
      */
     EvidenceCollector(Long clauseId, List<ExistingRef> existing, List<GuidanceInfo> guidanceCandidates,
-                      LocalDate baseDate, int max) {
+                      LocalDate baseDate, LocalDate today, int max) {
         this.clauseId = clauseId;
         this.baseDate = baseDate;
+        this.today = today;
         this.nextNumberStart = nextNumber(existing);
         Set<Long> usedGuidance = new HashSet<>();
         for (ExistingRef r : existing) {
@@ -104,7 +108,7 @@ final class EvidenceCollector {
         List<RefDraft> out = new ArrayList<>();
         int n = nextNumberStart;
         for (LawPick p : laws) {
-            out.add(lawRef(clauseId, "L" + n++, p.foundBy(), false, p.article(), baseDate));
+            out.add(lawRef(clauseId, "L" + n++, p.foundBy(), false, p.article(), baseDate, today));
         }
         if (guidance != null) {
             out.add(new RefDraft(clauseId, "G" + n, null, guidance.guidanceId(), RefFoundBy.TAG_MAP, false,
@@ -114,15 +118,20 @@ final class EvidenceCollector {
         return out;
     }
 
-    /** 조문 근거 한 행. 기준일에 시행 중인 조문이 없어 현행 조문으로 대신했으면 ref_text 앞에 표시한다. */
+    /**
+     * 조문 근거 한 행. 기준일에 시행 중인 조문이 없어 다른 개정본 행으로 대신했으면 ref_text 앞에 표시한다
+     * (현행 조문이면 {@link #FALLBACK_NOTE}, 시행일이 분석일보다 뒤인 시행 예정 조문이면 시행일을 넣은 시행 예정 표시).
+     *
+     * @param today 분석일 ({@link RuleValues#analysisDate}). null 이면 시행 예정 구분 없이 현행 대체 표시
+     */
     static RefDraft lawRef(Long clauseId, String label, RefFoundBy foundBy, boolean cited, LawArticleInfo a,
-                           LocalDate baseDate) {
+                           LocalDate baseDate, LocalDate today) {
         String title = a.label() + (a.title() == null || a.title().isBlank() ? "" : " (" + a.title() + ")");
-        boolean fallback = a.fallbackToCurrent()
-                || (baseDate != null && a.effectiveFrom() != null && a.effectiveFrom().isAfter(baseDate));
+        // 분석 기준일이 없으면 대체 판단을 하지 않는다 (fallbackToCurrent 만 본다)
+        String note = baseDate == null && !a.fallbackToCurrent() ? "" : a.substituteNote(baseDate, today);
         return new RefDraft(clauseId, label, a.lawArticleId(), null, foundBy, cited,
                 TextTruncator.truncate(title, AnalysisClauseRef.REF_TITLE_MAX_LENGTH),
-                fallback ? FALLBACK_NOTE + a.content() : a.content());
+                note + a.content());
     }
 
     /** 이미 붙은 근거 ID 의 가장 큰 번호 + 1 (없으면 1). */

@@ -23,6 +23,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -63,6 +66,7 @@ class ChatContextReader {
     /** 분석 근거에서 가져오는 조문 수, 질문으로 검색하는 조문 수 */
     static final int MAX_ANALYSIS_SOURCES = 4;
     static final int MAX_SEARCH_SOURCES = 4;
+    private static final ZoneId KOREA = ZoneId.of("Asia/Seoul");
 
     private final ConversationRepository conversationRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -71,6 +75,7 @@ class ChatContextReader {
     private final ComparisonService comparisonService;
     private final LawSearchService lawSearchService;
     private final LinkedDocuments linkedDocuments;
+    private final Clock clock;
 
     @Transactional(readOnly = true)
     public ChatContext read(UUID userId, AskCommand command) {
@@ -194,6 +199,8 @@ class ChatContextReader {
     /**
      * 법령 자료: ① 보고 있는 조항의 근거 ② 분석의 다른 확인 필요 조항 근거 (①②는 분석 당시 스냅샷, 합쳐 4개까지)
      * ③ 질문 낱말로 찾은 조문 (문서 종류의 관련 법령 안에서, 4개까지). 같은 조문은 한 번만. ID 는 L1 부터.
+     * ③은 오늘 기준으로 찾으므로, 오늘 시행 중인 행이 없어 시행 예정 조문으로 대신한 행이면 본문 앞에 표시를 붙인다
+     * ({@link #searchSourceText}). ①②는 분석 때 붙인 표시가 스냅샷에 이미 있다.
      */
     private List<ChatContext.Source> sources(String question, AnalysisChatInfo analysis, AnalysisChatInfo.Clause focus) {
         List<ChatContext.Source> out = new ArrayList<>();
@@ -226,12 +233,18 @@ class ChatContextReader {
                 if (seen.add(a.lawArticleId())) {
                     String label = a.lawName() + " " + ArticleNumber.label(a.articleNo(), a.articleBranchNo(), null);
                     out.add(new ChatContext.Source("L" + (out.size() + 1), a.lawArticleId(), label,
-                            a.title() == null ? a.label() : a.label() + " (" + a.title() + ")", a.content()));
+                            a.title() == null ? a.label() : a.label() + " (" + a.title() + ")",
+                            searchSourceText(a, LocalDate.now(clock.withZone(KOREA)))));
                     added++;
                 }
             }
         }
         return List.copyOf(out);
+    }
+
+    /** 질문 검색 조문의 본문. 기준일 없이(오늘 기준) 대체 표시를 판단한다: 시행일이 오늘보다 뒤면 시행 예정 표시. */
+    static String searchSourceText(LawArticleInfo a, LocalDate today) {
+        return a.substituteNote(null, today) + a.content();
     }
 
     private List<ChatContext.PastMessage> recent(Long conversationId) {

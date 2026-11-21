@@ -84,17 +84,18 @@ public class RuleStepHandler implements AnalysisStepHandler {
         Analysis analysis = analysisRepository.findById(ctx.analysisId())
                 .orElseThrow(() -> new IllegalStateException("분석이 없음: " + ctx.analysisId()));
         LocalDate baseDate = RuleValues.baseDate(analysis);
+        LocalDate today = RuleValues.analysisDate(analysis);
         String documentType = analysis.getDocumentTypeCode();
         List<AnalysisKeyTerm> keyTerms = keyTermRepository.findByAnalysisIdOrderBySortOrderAsc(ctx.analysisId());
         if ("EMPLOYMENT".equals(documentType)) {
-            checkMinimumWage(ctx.analysisId(), keyTerms, baseDate);
-            checkBreakTime(ctx.analysisId(), keyTerms, baseDate);
+            checkMinimumWage(ctx.analysisId(), keyTerms, baseDate, today);
+            checkBreakTime(ctx.analysisId(), keyTerms, baseDate, today);
         }
         saveMissingItems(ctx.analysisId(), documentType, keyTerms, baseDate,
                 wageOnlyDocument(objectMapper, analysis.getExtractionJson()));
     }
 
-    void checkMinimumWage(Long analysisId, List<AnalysisKeyTerm> keyTerms, LocalDate baseDate) {
+    void checkMinimumWage(Long analysisId, List<AnalysisKeyTerm> keyTerms, LocalDate baseDate, LocalDate today) {
         Optional<AnalysisKeyTerm> wage = findWithValue(keyTerms, WAGE_LABELS);
         if (wage.isEmpty()) {
             log.info("최저임금 규칙 건너뜀 (임금 값 없음): analysisId={}", analysisId);
@@ -132,7 +133,7 @@ public class RuleStepHandler implements AnalysisStepHandler {
             return;
         }
         RefDraft ref = EvidenceCollector.lawRef(clauseId, "L" + EvidenceCollector.nextNumber(existing),
-                RefFoundBy.RULE, true, article.get(0), baseDate);
+                RefFoundBy.RULE, true, article.get(0), baseDate, today);
         boolean applied = ruleWriter.applyRuleResult(analysisId, clauseId, result.comparison(), result.headline(),
                 result.whyCheck(), ref);
         log.info("최저임금 미달 {}: analysisId={}, clauseId={}", applied ? "붙임" : "못 붙임(판정 중 조항 아님)",
@@ -144,7 +145,7 @@ public class RuleStepHandler implements AnalysisStepHandler {
      * NO_BREAK_TIME 꼬리표에 연결된 조문 중 근로기준법 제54조 제1항)·숫자 비교를 붙인다.
      * 판정할 정보가 없으면(시각·휴게 모름) 아무것도 하지 않아 2차(GPT) 판단에 맡긴다.
      */
-    void checkBreakTime(Long analysisId, List<AnalysisKeyTerm> keyTerms, LocalDate baseDate) {
+    void checkBreakTime(Long analysisId, List<AnalysisKeyTerm> keyTerms, LocalDate baseDate, LocalDate today) {
         Optional<AnalysisKeyTerm> hours = findWithValue(keyTerms, HOURS_LABELS);
         if (hours.isEmpty()) {
             log.info("휴게시간 규칙 건너뜀 (근로시간 값 없음): analysisId={}", analysisId);
@@ -177,7 +178,7 @@ public class RuleStepHandler implements AnalysisStepHandler {
             return;
         }
         List<RefDraft> refs = List.of(EvidenceCollector.lawRef(clauseId, "L" + EvidenceCollector.nextNumber(existing),
-                RefFoundBy.RULE, true, article.get(), baseDate));
+                RefFoundBy.RULE, true, article.get(), baseDate, today));
         boolean applied = ruleWriter.applyRuleResult(analysisId, clauseId, RuleWriter.NO_BREAK_TIME_TAG,
                 result.comparison(), result.headline(), result.whyCheck(), refs);
         log.info("휴게시간 부족 {}: analysisId={}, clauseId={}", applied ? "붙임" : "못 붙임(판정 중 조항 아님)",

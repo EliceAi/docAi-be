@@ -85,7 +85,7 @@ class LawSearchServiceDailyTermTest {
         LawTermDictionary dictionary = new LawTermDictionary(Map.of("알바", List.of("단시간근로")));
         return new LawSearchService(laws, mock(LawAliasRepository.class), articles, mock(DocumentTypeLawRepository.class),
                 mock(IssueTagArticleRepository.class), mock(GuidanceRepository.class), mock(IssueTagRepository.class),
-                props, dictionary);
+                props, dictionary, java.time.Clock.systemUTC());
     }
 
     static List<Long> ids(List<LawArticleInfo> infos) {

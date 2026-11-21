@@ -263,7 +263,7 @@ class RuleEvidenceIntegrationTest {
 
         // 다시 돌려도 근거·이유가 겹쳐 붙지 않는다
         ruleStepHandler.checkBreakTime(analysisId, keyTermRepository.findByAnalysisIdOrderBySortOrderAsc(analysisId),
-                LocalDate.of(2026, 11, 20));
+                LocalDate.of(2026, 11, 20), LocalDate.of(2026, 11, 20));
         assertThat(refRepository.findByClauseIdOrderByRefIdAsc(hoursClause.getClauseId())).hasSameSizeAs(refs);
         assertThat(clauseRow(hoursClause.getClauseId()).get("why_check")).isEqualTo(row.get("why_check"));
     }
@@ -280,7 +280,7 @@ class RuleEvidenceIntegrationTest {
         keyTerm("근로시간", hoursClause.getClauseId(), hours, KeyTermState.OK, 1);
 
         ruleStepHandler.checkBreakTime(analysisId, keyTermRepository.findByAnalysisIdOrderBySortOrderAsc(analysisId),
-                LocalDate.of(2026, 11, 20));
+                LocalDate.of(2026, 11, 20), LocalDate.of(2026, 11, 20));
 
         assertThat(clauseRow(hoursClause.getClauseId()).get("basis_type")).isNull();
         assertThat(refRepository.findByClauseIdOrderByRefIdAsc(hoursClause.getClauseId())).isEmpty();
