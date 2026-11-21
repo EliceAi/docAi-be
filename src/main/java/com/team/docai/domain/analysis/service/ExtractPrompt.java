@@ -25,7 +25,7 @@ import java.util.Map;
 final class ExtractPrompt {
 
     /** 이 지시문·스키마 버전. docai.analysis.prompt-version 의 1차 부분과 같게 둔다 */
-    static final String VERSION = "extract-v3";
+    static final String VERSION = "extract-v4";
     static final String SCHEMA_NAME = "contract_extract";
 
     static final List<String> READ_STATES = List.of("READ", "PARTIAL", "UNREADABLE");
@@ -38,6 +38,10 @@ final class ExtractPrompt {
     static final int KEYWORD_MAX = 30;
     static final int LAW_NAME_MAX = 100;
     static final int LAW_ARTICLE_MAX = 30;
+    /** 쪽마다 못 읽은 곳 설명 한 줄 (extraction_json 에만 담김, 화면 칸 없음) */
+    static final int UNREADABLE_PART_MAX = 100;
+    /** 시각 "HH:mm" */
+    static final int TIME_MAX = 5;
 
     private ExtractPrompt() {
     }
@@ -54,7 +58,7 @@ final class ExtractPrompt {
                   회사 이름·근무 장소처럼 개인이 아닌 정보는 그대로 둔다.
                 - 네가 직접 쓰는 칸(oneLine, location, issueSummary)은 짧은 한국어로 쓰고 "무효", "불법", "위반이다",
                   "서명해도 된다" 같은 단정 표현을 쓰지 않는다.
-                - 네가 직접 쓰는 글 칸(oneLine, location, issueSummary, dates 의 label)에는 clauseKey(c1, c2 같은 키)를 쓰지 않는다.
+                - 네가 직접 쓰는 글 칸(oneLine, location, issueSummary, dates 의 label, pages 의 unreadableParts)에는 clauseKey(c1, c2 같은 키)를 쓰지 않는다.
                   다른 조항은 조 번호(예: "제5조")나 제목(예: "임금 조항")으로 부른다. clauseKey 는 clauseKey·relatedClauseKeys 칸에만 쓴다.
 
                 [문서 종류 확인 typeCheck]
@@ -66,8 +70,19 @@ final class ExtractPrompt {
                 - 연봉계약서·임금계약서처럼 임금만 정하고 근로시간·휴일 등은 다른 근로계약서에 있다고 보이는 문서면 true, 아니면 false.
 
                 [쪽 읽기 상태 pages] 이 묶음의 쪽마다 하나씩.
-                - READ: 거의 다 읽음. PARTIAL: 일부가 흐리거나 잘리거나 접혀 못 읽음. UNREADABLE: 글자를 거의 못 읽음.
-                - 가린 칸 때문에 못 읽은 것은 PARTIAL 로 보지 않는다.
+                - READ: 모든 글자를 확실히 읽음. PARTIAL: 흐림·잘림·접힘·빛 반사로 확실히 읽지 못한 글자가 한 곳이라도 있음.
+                  UNREADABLE: 글자를 거의 못 읽음.
+                - 사진이 기울어졌거나, 배경이 밝거나 어둡거나, 종이가 겹쳐 찍혔거나, 그림자가 졌다는 것만으로는 PARTIAL 이 아니다.
+                  그런 사진이라도 모든 글자를 확실히 읽었으면 READ 다.
+                - 흐린 글자를 앞뒤 문맥으로 짐작해 채웠다면 읽은 것이 아니다. 그곳은 PARTIAL 로 하고 unreadableParts 에 적는다.
+                - 다음은 PARTIAL 사유가 아니다. PARTIAL 로 하지 않고 unreadableParts 에도 적지 않는다.
+                  · 가린 칸(검은·흰 상자, 모자이크)으로 가려진 곳. "가려짐"은 사유가 아니다.
+                  · 조항이 다음 쪽으로 이어지거나 앞 쪽에서 이어지는 것.
+                  · 문서가 이 쪽에서 끝나는지, 뒤에 내용이 더 있는지 모르는 것. (글줄이 사진 가장자리에서 잘려 보이면 잘림이다)
+                  · 사진 밖으로 나간 종이 여백(글자가 없는 부분).
+                - unreadableParts: PARTIAL 이면 읽지 못한 곳을 하나씩 적는다 (예: "제4조 ② 마지막 줄 끝이 잘림").
+                  정확한 조 번호를 모르면 "3쪽 가운데 문단 흐림"처럼 대략의 위치로 적는다. READ·UNREADABLE 이면 빈 배열.
+                - unreadableParts 에는 흐림·잘림·접힘·빛 반사로 실제 글자를 읽지 못한 곳만 적는다.
 
                 [조항 clauses] 문서의 모든 조항을 읽는 순서대로, 하나도 빠뜨리거나 합치거나 나누지 않는다.
                 - "제N조" 하나가 조항 하나다. 조 번호가 없는 특약·추가 사항은 문장 묶음마다 조항 하나다.
@@ -90,8 +105,10 @@ final class ExtractPrompt {
                 [주요 조건 keyTerms] 아래 항목마다 정확히 하나씩, 이 묶음에서 찾은 대로.
                 - state: WRITTEN(값이 적혀 있음) / MISSING(이 묶음에 적혀 있지 않음) / MASKED(가려져 못 읽음) / UNREADABLE(흐려 못 읽음).
                 - value: 화면에 보여 줄 값. 계약서 표현을 그대로 짧게 (예: "시급 10,000원"). WRITTEN 이 아니면 null.
-                - valueJson: 항목 설명에 적힌 칸만 채우고 나머지는 null. 날짜는 YYYY-MM-DD, 금액은 원 단위 정수.
-                  WRITTEN 이 아니거나 숫자로 바꿀 수 없으면 모든 칸 null.
+                - valueJson: 항목 설명에 적힌 칸만 채우고 나머지는 null(배열 칸 breaks 는 빈 배열). 날짜는 YYYY-MM-DD,
+                  금액은 원 단위 정수, 시각은 24시간제 HH:mm (예: "오후 2시" → "14:00").
+                  WRITTEN 이 아니거나 숫자로 바꿀 수 없으면 모든 칸 null(breaks 는 빈 배열).
+                - 시각·휴게 칸은 계약서에 적힌 것만 옮긴다. 근로시간·휴게시간을 더하거나 빼서 계산하지 않고, 휴게가 충분한지 판단하지 않는다.
                 - clauseKey: 값이 나온 조항의 clauseKey. evidence: 값이 나온 원문 문장 그대로. 없으면 둘 다 null.
 
                 [날짜]
@@ -149,7 +166,8 @@ final class ExtractPrompt {
                 "detectedTypeName", nullableString(Analysis.DETECTED_TYPE_NAME_MAX_LENGTH));
         Map<String, Object> page = object(
                 "pageNo", Map.of("type", "integer"),
-                "readState", Map.of("type", "string", "enum", READ_STATES));
+                "readState", Map.of("type", "string", "enum", READ_STATES),
+                "unreadableParts", Map.of("type", "array", "items", string(UNREADABLE_PART_MAX)));
         Map<String, Object> lawHint = object(
                 "law", string(LAW_NAME_MAX),
                 "article", string(LAW_ARTICLE_MAX));
@@ -184,7 +202,14 @@ final class ExtractPrompt {
                 "daysPerWeek", Map.of("type", List.of("number", "null")),
                 "monthlyHours", Map.of("type", List.of("number", "null")),
                 "start", nullableString(10),
-                "end", nullableString(10));
+                "end", nullableString(10),
+                "workStart", nullableString(TIME_MAX),
+                "workEnd", nullableString(TIME_MAX),
+                "breaks", Map.of("type", "array", "items", object(
+                        "start", string(TIME_MAX),
+                        "end", string(TIME_MAX))),
+                "breakMinutes", Map.of("type", List.of("integer", "null")),
+                "noBreak", Map.of("type", List.of("boolean", "null")));
         Map<String, Object> keyTerm = object(
                 "label", labels.isEmpty() ? string(AnalysisKeyTerm.LABEL_MAX_LENGTH)
                         : Map.of("type", "string", "enum", labels),

@@ -455,6 +455,7 @@ class JudgeStepHandlerTest {
         AnalysisClause wage = clause(4, "c4", true);
         ReflectionTestUtils.setField(wage, "basisType", com.team.docai.domain.analysis.entity.BasisType.RULE);
         ReflectionTestUtils.setField(wage, "headline", "시급이 2026년 최저임금보다 낮아요");
+        ReflectionTestUtils.setField(wage, "whyCheck", "시간당 320원 낮아요.\n하루 근로시간이 9시간이에요.");
         givenClauses(clause(1, "c1", false), wage);
         refs.put(4L, List.of(lawRef(4, "L1", RefFoundBy.RULE)));
         List<GptRequest> requests = new CopyOnWriteArrayList<>();
@@ -472,6 +473,8 @@ class JudgeStepHandlerTest {
         String body = ((GptContentPart.Text) request.userContent().get(1)).text();
         assertThat(head).contains("- c1 | 제1조 | 제목1 | 한 줄 c1", "- c4 |");
         assertThat(body).contains("규칙 결과로 고정 (NEEDS_CHECK): 시급이 2026년 최저임금보다 낮아요", "[L1] 근로기준법 제20조");
+        // 규칙 둘이 한 조항에 붙으면 뒤 규칙은 why_check 에만 있어 그 내용도 보낸다 (한 줄로)
+        assertThat(body).contains("규칙 결과 내용: 시간당 320원 낮아요. 하루 근로시간이 9시간이에요.\n");
         assertThat(request.systemPrompt()).isEqualTo(JudgePrompt.SYSTEM_PROMPT)
                 .contains("clauseKey 를 쓰지 말고 조 번호");
         // 조항을 조 번호·제목으로 부를 수 있게 목차·판단 조항 머리에 함께 넣는다

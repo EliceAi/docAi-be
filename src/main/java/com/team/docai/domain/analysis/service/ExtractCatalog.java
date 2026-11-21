@@ -9,6 +9,8 @@ import java.util.Map;
  * value_json 모양은 항목마다 고정 (설계 29번, ERD): 임금 {type, amount}, 근로시간 {hoursPerDay, daysPerWeek},
  * 계약기간 {start, end}, 금액 항목 {amount}. 나머지 항목은 value_json 없음.
  * 선택 칸(값이 있을 때만 넣음): 임금 basePay(최저임금 비교 금액), 근로시간 monthlyHours(월 기준시간). 6단계와 약속한 이름.
+ * 근로시간 선택 칸(휴게 규칙용, 값이 있을 때만): workStart·workEnd("HH:mm"), breaks([{start, end}]), breakMinutes(분),
+ * noBreak(true 만 넣음). 적힌 값만 옮기고 계산은 서버(BreakTimeRule)가 한다.
  */
 public final class ExtractCatalog {
 
@@ -17,7 +19,8 @@ public final class ExtractCatalog {
     }
 
     /** value_json 에 값이 있을 때만 넣는 칸 (없으면 키도 넣지 않아 기존 모양 {type, amount} 등을 유지) */
-    static final java.util.Set<String> OPTIONAL_VALUE_KEYS = java.util.Set.of("basePay", "monthlyHours");
+    static final java.util.Set<String> OPTIONAL_VALUE_KEYS = java.util.Set.of("basePay", "monthlyHours",
+            "workStart", "workEnd", "breaks", "breakMinutes", "noBreak");
 
     static final List<String> WAGE_TYPES = List.of("HOURLY", "DAILY", "WEEKLY", "MONTHLY", "ANNUAL");
 
@@ -30,10 +33,16 @@ public final class ExtractCatalog {
                     new Term("계약기간", List.of("start", "end"), "근로계약 시작일과 종료일. 기간을 정하지 않았으면 end 는 null"),
                     new Term("근무장소", List.of(), "일하는 곳"),
                     new Term("업무", List.of(), "맡는 일"),
-                    new Term("근로시간", List.of("hoursPerDay", "daysPerWeek", "monthlyHours"),
+                    new Term("근로시간", List.of("hoursPerDay", "daysPerWeek", "monthlyHours", "workStart", "workEnd",
+                            "breaks", "breakMinutes", "noBreak"),
                             "시업·종업 시각, 휴게시간, 주 근무일. hoursPerDay 는 휴게 뺀 하루 소정근로시간. monthlyHours 는 \"월 209시간\","
                                     + " \"통상임금 기준시간 수 209\"처럼 월 기준시간이 적혀 있을 때만. 근로시간 조항이 없어도 월 기준시간이"
-                                    + " 적혀 있으면 WRITTEN 으로 그 문장을 value 에 적는다"),
+                                    + " 적혀 있으면 WRITTEN 으로 그 문장을 value 에 적는다."
+                                    + " workStart·workEnd 는 적힌 시업·종업 시각 (HH:mm), 없으면 null."
+                                    + " breaks 는 시각으로 적힌 휴게시간마다 {start, end} (예: \"휴게 12시~13시\" → {\"12:00\",\"13:00\"})."
+                                    + " breakMinutes 는 시각 없이 길이만 적힌 휴게시간일 때 하루 휴게를 모두 더한 분 (예: 휴게 1시간 → 60, 30분씩 2회 → 60),"
+                                    + " 시각으로 적혔으면 null."
+                                    + " noBreak 는 \"휴게시간 없음\"처럼 휴게가 없다고 적혀 있을 때만 true, 휴게에 대한 말이 없으면 null"),
                     new Term("휴일", List.of(), "주휴일 등 쉬는 날"),
                     new Term("임금", List.of("type", "amount", "basePay"),
                             "임금. type 은 HOURLY/DAILY/WEEKLY/MONTHLY/ANNUAL, amount 는 그 단위의 총액(원 단위 정수)."

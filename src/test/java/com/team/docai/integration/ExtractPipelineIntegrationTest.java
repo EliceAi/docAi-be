@@ -195,7 +195,9 @@ class ExtractPipelineIntegrationTest {
     static List<ExtractResponse.PageRead> pages(int from, int to, Integer partial) {
         List<ExtractResponse.PageRead> list = new ArrayList<>();
         for (int p = from; p <= to; p++) {
-            list.add(new ExtractResponse.PageRead(p, partial != null && partial == p ? "PARTIAL" : "READ"));
+            list.add(partial != null && partial == p
+                    ? new ExtractResponse.PageRead(p, "PARTIAL", List.of(p + "쪽 맨 아래 줄 끝이 잘림"))
+                    : new ExtractResponse.PageRead(p, "READ"));
         }
         return list;
     }

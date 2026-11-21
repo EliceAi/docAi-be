@@ -59,7 +59,7 @@ docai:
   analysis:
     # analysis.prompt_version 에 저장 (50자 이하). 1차 지시문·스키마 버전(ExtractPrompt.VERSION)과 같게 둔다.
     # 2차 지시문·스키마 버전(JudgePrompt.VERSION)을 "/" 뒤에 붙인다
-    prompt-version: extract-v3/judge-v1
+    prompt-version: extract-v4/judge-v2
     # 쪽 묶음 크기 (아키텍처 2단계)
     pages-per-chunk: 5
     # 사용자별 1분 동안 분석 요청 수. 넘으면 429 RATE_LIMITED (명세에 숫자 없음, 팀 확인 필요)
