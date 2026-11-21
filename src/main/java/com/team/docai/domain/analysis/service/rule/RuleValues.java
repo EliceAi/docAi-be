@@ -31,6 +31,14 @@ final class RuleValues {
         return analysis.getStartedAt().atZoneSameInstant(KOREA).toLocalDate();
     }
 
+    /**
+     * 분석일: 분석 시작일(한국 날짜). 근거 조문이 시행 예정 조문인지(시행일 &gt; 분석일) 가릴 때 "오늘"로 쓴다.
+     * 시작 시각이 없으면 null (그때는 시행 예정 구분 없이 현행 대체 표시만 붙음).
+     */
+    static LocalDate analysisDate(Analysis analysis) {
+        return analysis.getStartedAt() == null ? null : analysis.getStartedAt().atZoneSameInstant(KOREA).toLocalDate();
+    }
+
     /** 0보다 큰 숫자. 숫자·"2,500,000"·"10000원" 을 받는다. 그 밖(null, 빈 글자, 음수, 0)은 empty. */
     static Optional<BigDecimal> positive(Object value) {
         BigDecimal n = null;

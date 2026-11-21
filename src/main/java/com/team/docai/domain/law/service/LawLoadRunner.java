@@ -18,7 +18,8 @@ import java.util.stream.Collectors;
 
 /**
  * docai.law.load=true 로 켰을 때만 기동 직후 법령 적재를 1회 돌린다. 기본은 꺼져 있어 서버 기동·스케줄로는 돌지 않는다.
- * 실행: {@code ./gradlew bootRun --args='--docai.law.load=true --spring.main.web-application-type=none'}
+ * 실행: {@code ./gradlew bootRun --args='--docai.law.load=true --server.port=0'} (8080 서버와 겹치지 않게 임의 포트.
+ * web-application-type=none 은 SecurityConfig 가 HttpSecurity 를 찾지 못해 기동에 실패한다)
  * docai.law.exit-after-load=true(기본)면 끝난 뒤 프로세스를 끝낸다 (성공 0, 실패 1).
  * docai.law.only=법령명,법령명 을 주면 그 법령만 받는다 (예: 새로 추가한 시행령만. 기존 법령 행을 건드리지 않음).
  */

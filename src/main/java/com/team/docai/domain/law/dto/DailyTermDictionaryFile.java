@@ -20,7 +20,7 @@ public record DailyTermDictionaryFile(String source, String generatedAt, List<St
     public record Entry(String daily, List<Legal> legal) {
     }
 
-    /** @param rows 지금 시행 중인 관련 법령 조문 중 이 용어로 검색되는 행 수 */
+    /** @param rows 관련 법령의 현행 개정본(시행 예정 포함) 조문 중 이 용어로 검색되는 행 수 */
     public record Legal(String term, String relation, long rows) {
     }
 

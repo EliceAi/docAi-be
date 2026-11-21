@@ -50,7 +50,7 @@ public class NeedMoreEvidence {
         List<ExistingRef> existing = refRepository.findByClauseIdOrderByRefIdAsc(clauseId).stream()
                 .map(ExistingRef::from).toList();
         EvidenceCollector collector = new EvidenceCollector(clauseId, existing, List.of(), baseDate,
-                existing.size() + MAX_NEW_REFS);
+                RuleValues.analysisDate(analysis), existing.size() + MAX_NEW_REFS);
         // 이미 붙은 조문이 섞여 나올 수 있어 넉넉히 받아 앞에서부터 채운다
         List<LawArticleInfo> found = lawSearchService.searchWithDailyTerms(query, lawIds, baseDate,
                 existing.size() + MAX_NEW_REFS);

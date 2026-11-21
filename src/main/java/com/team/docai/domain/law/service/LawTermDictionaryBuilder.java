@@ -35,7 +35,7 @@ import java.util.Set;
  *   <li>{@link LawTermCatalog#DAILY_TERMS} 마다 법제처 일상용어-법령용어 연계(dlytrmRlt)를 받는다.
  *       응답은 캐시(daily-term/{일상용어}.json)에 두고, 캐시가 있으면 다시 부르지 않는다(force 면 다시). offline 이면 캐시만.</li>
  *   <li>걸러 낸다 ({@link #RULES}): 반의어, 일상용어와 같은 말, 한 글자, 일상용어로 시작하는 말, 뜻이 넓은 일반 낱말, 사람이 뺀 연결,
- *       관련 법령(문서 종류별 관련 법령 전체)의 시행 중 조문에 한 번도 안 나오는 말(검색에 도움이 안 됨),
+ *       관련 법령(문서 종류별 관련 법령 전체)의 현행 개정본(시행 예정 포함) 조문에 한 번도 안 나오는 말(검색에 도움이 안 됨),
  *       {@link LawTermCatalog#MAX_ROWS}행보다 많이 나오는 흔한 말.</li>
  *   <li>남은 것을 용어관계(동의어 → 하위어 → 상위어 → 연관어) 순으로 {@link LawTermCatalog#MAX_LEGAL_PER_DAILY}개까지.
  *       이미 고른 법령용어로 시작하는 말(단시간근로 → 단시간근로자)은 검색이 이미 찾으므로 뺀다.</li>
@@ -53,7 +53,7 @@ public class LawTermDictionaryBuilder {
             "일상용어로 시작하는 말(보증금 → 보증금등)은 일상용어 앞부분 일치 검색이 이미 찾으므로 뺀다 (COVERED_BY_DAILY)",
             "뜻이 넓은 일반 낱말은 뺀다 (GENERIC_WORD: LawTermCatalog.GENERIC_WORDS, 동음이의어로 잘못 연결되는 경우가 많음)",
             "사람이 검토해 뺀 연결 (BLOCKED_PAIR: LawTermCatalog.BLOCKED_PAIRS)",
-            "근로·임대차 관련 법령의 시행 중 조문에 한 번도 검색되지 않는 말은 뺀다 (NOT_IN_LAW_DB)",
+            "근로·임대차 관련 법령의 현행 개정본(시행 예정 포함) 조문에 한 번도 검색되지 않는 말은 뺀다 (NOT_IN_LAW_DB)",
             "관련 법령 조문 " + LawTermCatalog.MAX_ROWS + "행보다 많이 검색되는 흔한 말은 뺀다 (TOO_COMMON)",
             "남은 것은 동의어 → 하위어 → 상위어 → 연관어 순으로 고르고, 이미 고른 법령용어로 시작하는 말은 앞부분 일치 검색이 이미 찾으므로 뺀다 (COVERED_BY_LEGAL)",
             "일상용어당 " + LawTermCatalog.MAX_LEGAL_PER_DAILY + "개까지 (OVER_LIMIT)");

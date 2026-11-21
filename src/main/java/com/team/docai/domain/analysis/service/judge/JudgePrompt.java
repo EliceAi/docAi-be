@@ -24,7 +24,7 @@ import java.util.Map;
  */
 final class JudgePrompt {
 
-    static final String VERSION = "judge-v2";
+    static final String VERSION = "judge-v3";
     static final String SCHEMA_NAME = "contract_judge";
     static final List<String> VERDICTS = List.of("NEEDS_CHECK", "UNCERTAIN", "OK");
 
@@ -42,13 +42,24 @@ final class JudgePrompt {
               자료에 없는 법령·판례·숫자를 지어내지 않는다.
             - 인용은 citedIds 에 그 조항 아래 "근거" 목록에 적힌 ID(예: "L1", "G3")로만 한다.
               다른 조항의 ID, 목록에 없는 ID 는 쓰지 않는다. 근거가 없는 조항은 citedIds 를 빈 배열로 둔다.
-            - 준 근거로 판단하기 부족하면 그 조항은 UNCERTAIN 으로 판단하고, needMore 에 더 필요한 자료(want)와
+            - 불리할 수 있는 내용이 있는데 준 근거로 판단하기 부족하면 그 조항은 UNCERTAIN 으로 판단하고, needMore 에 더 필요한 자료(want)와
               법령 검색어(searchKeywords 2~5개)를 적는다. needMore 에 넣은 조항도 judgments 에는 반드시 넣는다.
               "이번이 마지막 판단"이라고 적힌 요청에서는 needMore 를 빈 배열로 둔다.
 
+            [판단 기준] 같은 문장에는 언제나 같은 판단을 낸다.
+            - 1차 의심 내용은 참고일 뿐이다. 조항 원문이 실제로 정한 내용이 서명하는 쪽(근로자·임차인)에게 법보다 불리하거나
+              한쪽에만 부담을 지우는지로 판단한다.
+            - 불리한 내용이 없으면 근거가 없어도 OK 다.
+            - 계약서에 없는 사항은 법령이나 회사·임대인이 정한 규정을 따른다는 보충 조항, 관할법원·분쟁 절차를 정한 조항은
+              그 자체로 불리한 내용을 정하지 않으면 OK 다. "규정이 바뀔 수 있다", "법원이 멀 수 있다"처럼 생길지 모르는 일만으로는
+              확인이 필요하다고 보지 않는다. 다만 준 근거가 그 조항 내용 자체를 직접 문제 삼으면 그 근거로 판단한다.
+            - 내용을 다른 문서(연봉계약서, 취업규칙 등)에 맡긴 조항은, 그 문서가 전체 목차에 함께 있으면 그 내용으로 판단한다.
+              목차에 없고 맡긴 항목이 [규칙 결과: 빠진 필수 항목]에 있으면 OK 로 두지 않는다(근거가 있으면 NEEDS_CHECK, 없으면 UNCERTAIN).
+              그 밖에는 다른 문서를 언급한 것만으로 확인이 필요하다고 보지 않는다.
+
             [판단 judgments] "판단할 조항"마다 정확히 하나씩, 그 조항의 clauseKey 로.
-            - verdict: NEEDS_CHECK(준 근거로 보아 확인이 필요함, citedIds 1개 이상) / UNCERTAIN(의심되지만 준 근거로는 판단할 수 없음)
-              / OK(근거를 보니 문제 될 것이 없음).
+            - verdict: NEEDS_CHECK(준 근거로 보아 확인이 필요함, citedIds 1개 이상) / UNCERTAIN(불리할 수 있지만 준 근거로는 판단할 수 없음)
+              / OK(불리한 내용이 없거나, 준 근거로 보아 법에 맞음).
             - UNCERTAIN 이면 headline·whyCheck 에 법적 판단(법 위반 여부, 효력 여부, 금지 여부)을 쓰지 않는다.
               무엇이 걱정되는지와 상대방에게 확인할 점만 쓴다.
             - "규칙 결과로 고정"이라고 적힌 조항은 코드가 숫자로 계산한 결과이므로 NEEDS_CHECK 로 두고 그 결과와 어긋나게 쓰지 않는다.

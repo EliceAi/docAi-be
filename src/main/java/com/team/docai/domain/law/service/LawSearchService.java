@@ -20,7 +20,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -61,6 +63,7 @@ public class LawSearchService {
     private final IssueTagRepository issueTagRepository;
     private final LawProperties properties;
     private final LawTermDictionary lawTermDictionary;
+    private final Clock clock;
 
     /** 문서 종류의 문제 꼬리표 (분석 1차 프롬프트, 저장 전 목록 확인). 코드 순 */
     public List<IssueTagInfo> findIssueTags(String documentTypeCode) {
@@ -131,7 +134,7 @@ public class LawSearchService {
     }
 
     /**
-     * 지금 시행 중인 조문 중 검색어 하나에 맞는 행 수 (검색과 같은 앞부분 일치). 일상용어 사전 적재가 쓴다.
+     * 현행 개정본(effective_to 없음, 시행 예정 포함) 조문 중 검색어 하나에 맞는 행 수 (검색과 같은 앞부분 일치). 일상용어 사전 적재가 쓴다.
      * 검색어가 글자·숫자를 하나도 갖지 않거나 법령이 없으면 0.
      */
     public long countCurrentArticles(String keyword, Collection<Long> lawIds) {
@@ -260,7 +263,10 @@ public class LawSearchService {
         return out;
     }
 
-    private static LocalDate dateOrToday(LocalDate baseDate) {
-        return baseDate != null ? baseDate : LocalDate.now();
+    /** 기준일이 없으면 오늘 (한국 날짜, 주입된 Clock). */
+    private LocalDate dateOrToday(LocalDate baseDate) {
+        return baseDate != null ? baseDate : LocalDate.now(clock.withZone(KOREA));
     }
+
+    private static final ZoneId KOREA = ZoneId.of("Asia/Seoul");
 }

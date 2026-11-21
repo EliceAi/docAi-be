@@ -123,7 +123,7 @@ class ChatPipelineTest {
     ChatPipeline pipeline(int limit) {
         LinkedDocuments linked = new LinkedDocuments(analysisService, clock);
         ChatContextReader reader = new ChatContextReader(conversations, messages, contractService, analysisQuery,
-                comparisonService, lawSearch, linked);
+                comparisonService, lawSearch, linked, clock);
         return new ChatPipeline(new ChatRateLimiter(clock, limit), reader, gpt, new ChatWriter(conversations, messages, contractService, clock));
     }
 
@@ -316,6 +316,24 @@ class ChatPipelineTest {
         assertThat(sent).contains("[L1] 근로기준법 제20조", "[L2] 최저임금법 제6조제1항 (최저임금의 효력)");
         assertThat(info.references()).contains(new ChatReference(ReferenceType.LAW_DB, "최저임금법 제6조"));
         assertThat(info.answerType()).isEqualTo(AnswerType.ANSWERED);
+    }
+
+    @Test
+    void 질문_낱말로_찾은_조문이_시행_예정이면_본문_앞에_시행일과_함께_표시하고_현행_조문은_그대로_보낸다() {
+        // 오늘(2026-11-12) 시행 중인 행이 없어 2027-04-28 시행판으로 대신한 시행령 조문
+        when(lawSearch.findLawIds("EMPLOYMENT")).thenReturn(List.of(10L, 11L));
+        when(lawSearch.searchWithDailyTerms(any(), anyCollection(), isNull(), eq(ChatContextReader.MAX_SEARCH_SOURCES))).thenReturn(List.of(
+                new LawArticleInfo(7001L, 11L, "민간임대주택에 관한 특별법 시행령", 34, 0, null, "임대료", "시행 예정 본문",
+                        LocalDate.of(2027, 4, 28), null, 0.5, true),
+                new LawArticleInfo(7002L, 10L, "민간임대주택에 관한 특별법", 44, 0, null, "임대료", "현행 본문",
+                        LocalDate.of(2025, 10, 1), null, 0.4, false)));
+        gptReturns(gptAnswer("ANSWERED", "임대료 조항을 확인해 보세요.", List.of(), List.of(), false, null, List.of()));
+
+        pipeline.ask(USER, newQuestion("임대료 올려도 돼?", null));
+
+        String sent = text(sentRequest());
+        assertThat(sent).contains("[시행 예정 조문(2027-04-28 시행)으로 대신함: 지금 적용되는 조문과 다를 수 있음]\n시행 예정 본문");
+        assertThat(sent).contains("현행 본문").doesNotContain("[현행 조문으로 대신함");
     }
 
     @Test

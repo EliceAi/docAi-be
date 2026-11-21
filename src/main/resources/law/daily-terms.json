@@ -1,7 +1,7 @@
 {
   "source" : "법제처 Open API 지능형 법령정보지식베이스 일상용어-법령용어 연계 (lawService.do target=dlytrmRlt)",
-  "generatedAt" : "2026-11-19",
-  "rules" : [ "반의어(140302)는 쓰지 않는다 (ANTONYM)", "일상용어와 같은 말, 한 글자 낱말은 뺀다 (SAME_AS_DAILY, TOO_SHORT)", "일상용어로 시작하는 말(보증금 → 보증금등)은 일상용어 앞부분 일치 검색이 이미 찾으므로 뺀다 (COVERED_BY_DAILY)", "뜻이 넓은 일반 낱말은 뺀다 (GENERIC_WORD: LawTermCatalog.GENERIC_WORDS, 동음이의어로 잘못 연결되는 경우가 많음)", "사람이 검토해 뺀 연결 (BLOCKED_PAIR: LawTermCatalog.BLOCKED_PAIRS)", "근로·임대차 관련 법령의 시행 중 조문에 한 번도 검색되지 않는 말은 뺀다 (NOT_IN_LAW_DB)", "관련 법령 조문 250행보다 많이 검색되는 흔한 말은 뺀다 (TOO_COMMON)", "남은 것은 동의어 → 하위어 → 상위어 → 연관어 순으로 고르고, 이미 고른 법령용어로 시작하는 말은 앞부분 일치 검색이 이미 찾으므로 뺀다 (COVERED_BY_LEGAL)", "일상용어당 3개까지 (OVER_LIMIT)" ],
+  "generatedAt" : "2026-11-22",
+  "rules" : [ "반의어(140302)는 쓰지 않는다 (ANTONYM)", "일상용어와 같은 말, 한 글자 낱말은 뺀다 (SAME_AS_DAILY, TOO_SHORT)", "일상용어로 시작하는 말(보증금 → 보증금등)은 일상용어 앞부분 일치 검색이 이미 찾으므로 뺀다 (COVERED_BY_DAILY)", "뜻이 넓은 일반 낱말은 뺀다 (GENERIC_WORD: LawTermCatalog.GENERIC_WORDS, 동음이의어로 잘못 연결되는 경우가 많음)", "사람이 검토해 뺀 연결 (BLOCKED_PAIR: LawTermCatalog.BLOCKED_PAIRS)", "근로·임대차 관련 법령의 현행 개정본(시행 예정 포함) 조문에 한 번도 검색되지 않는 말은 뺀다 (NOT_IN_LAW_DB)", "관련 법령 조문 250행보다 많이 검색되는 흔한 말은 뺀다 (TOO_COMMON)", "남은 것은 동의어 → 하위어 → 상위어 → 연관어 순으로 고르고, 이미 고른 법령용어로 시작하는 말은 앞부분 일치 검색이 이미 찾으므로 뺀다 (COVERED_BY_LEGAL)", "일상용어당 3개까지 (OVER_LIMIT)" ],
   "terms" : [ {
     "daily" : "알바",
     "legal" : [ {
@@ -125,65 +125,88 @@
     "legal" : [ {
       "term" : "사업주",
       "relation" : "연관어",
-      "rows" : 19
+      "rows" : 21
     } ]
   }, {
     "daily" : "월세",
     "legal" : [ {
+      "term" : "월임대료",
+      "relation" : "동의어",
+      "rows" : 3
+    }, {
       "term" : "월차임",
       "relation" : "동의어",
       "rows" : 6
     }, {
       "term" : "차임",
       "relation" : "동의어",
-      "rows" : 24
-    }, {
-      "term" : "임대차",
-      "relation" : "연관어",
-      "rows" : 65
+      "rows" : 26
     } ]
   }, {
     "daily" : "전세",
     "legal" : [ {
+      "term" : "임대보증금",
+      "relation" : "연관어",
+      "rows" : 33
+    }, {
       "term" : "임대차",
       "relation" : "연관어",
-      "rows" : 65
+      "rows" : 111
     } ]
   }, {
     "daily" : "보증금",
     "legal" : [ {
+      "term" : "임대보증금",
+      "relation" : "연관어",
+      "rows" : 33
+    }, {
       "term" : "임차권등기명령",
       "relation" : "연관어",
       "rows" : 9
     }, {
-      "term" : "차임",
+      "term" : "전대보증금",
       "relation" : "연관어",
-      "rows" : 24
+      "rows" : 2
     } ]
   }, {
     "daily" : "집주인",
     "legal" : [ {
       "term" : "임대인",
       "relation" : "연관어",
-      "rows" : 42
+      "rows" : 59
     } ]
   }, {
     "daily" : "세입자",
     "legal" : [ {
       "term" : "임차인",
       "relation" : "동의어",
-      "rows" : 73
+      "rows" : 166
     }, {
       "term" : "부동산임차인",
       "relation" : "연관어",
       "rows" : 1
+    }, {
+      "term" : "입주자격",
+      "relation" : "연관어",
+      "rows" : 1
+    } ]
+  }, {
+    "daily" : "관리비",
+    "legal" : [ {
+      "term" : "관리수수료",
+      "relation" : "연관어",
+      "rows" : 2
+    }, {
+      "term" : "선수관리비",
+      "relation" : "연관어",
+      "rows" : 4
     } ]
   }, {
     "daily" : "원상복구",
     "legal" : [ {
       "term" : "원상회복",
       "relation" : "동의어",
-      "rows" : 14
+      "rows" : 15
     } ]
   }, {
     "daily" : "계약금",
@@ -1103,19 +1126,9 @@
     "reason" : "COVERED_BY_DAILY"
   }, {
     "daily" : "월세",
-    "term" : "월임대료",
-    "relation" : "동의어",
-    "reason" : "NOT_IN_LAW_DB"
-  }, {
-    "daily" : "월세",
     "term" : "임대료",
     "relation" : "연관어",
     "reason" : "BLOCKED_PAIR"
-  }, {
-    "daily" : "월세",
-    "term" : "주택임차료",
-    "relation" : "연관어",
-    "reason" : "NOT_IN_LAW_DB"
   }, {
     "daily" : "월세",
     "term" : "차임액",
@@ -1123,18 +1136,23 @@
     "reason" : "COVERED_BY_LEGAL"
   }, {
     "daily" : "월세",
+    "term" : "임대차",
+    "relation" : "연관어",
+    "reason" : "OVER_LIMIT"
+  }, {
+    "daily" : "월세",
     "term" : "임대차계약",
     "relation" : "연관어",
-    "reason" : "COVERED_BY_LEGAL"
+    "reason" : "OVER_LIMIT"
+  }, {
+    "daily" : "월세",
+    "term" : "주택임차료",
+    "relation" : "연관어",
+    "reason" : "OVER_LIMIT"
   }, {
     "daily" : "전세",
     "term" : "거주형태",
     "relation" : "상위어",
-    "reason" : "NOT_IN_LAW_DB"
-  }, {
-    "daily" : "전세",
-    "term" : "임대보증금",
-    "relation" : "연관어",
     "reason" : "NOT_IN_LAW_DB"
   }, {
     "daily" : "전세",
@@ -1273,11 +1291,6 @@
     "reason" : "NOT_IN_LAW_DB"
   }, {
     "daily" : "보증금",
-    "term" : "임대보증금",
-    "relation" : "연관어",
-    "reason" : "NOT_IN_LAW_DB"
-  }, {
-    "daily" : "보증금",
     "term" : "임대차보증금",
     "relation" : "하위어",
     "reason" : "NOT_IN_LAW_DB"
@@ -1305,11 +1318,6 @@
     "daily" : "보증금",
     "term" : "자원순환보증금",
     "relation" : "하위어",
-    "reason" : "NOT_IN_LAW_DB"
-  }, {
-    "daily" : "보증금",
-    "term" : "전대보증금",
-    "relation" : "연관어",
     "reason" : "NOT_IN_LAW_DB"
   }, {
     "daily" : "보증금",
@@ -1347,6 +1355,11 @@
     "relation" : "연관어",
     "reason" : "BLOCKED_PAIR"
   }, {
+    "daily" : "보증금",
+    "term" : "차임",
+    "relation" : "연관어",
+    "reason" : "OVER_LIMIT"
+  }, {
     "daily" : "집주인",
     "term" : "세입자",
     "relation" : "반의어",
@@ -1369,11 +1382,6 @@
   }, {
     "daily" : "세입자",
     "term" : "임차자",
-    "relation" : "연관어",
-    "reason" : "NOT_IN_LAW_DB"
-  }, {
-    "daily" : "세입자",
-    "term" : "입주자격",
     "relation" : "연관어",
     "reason" : "NOT_IN_LAW_DB"
   }, {
@@ -1408,11 +1416,6 @@
     "reason" : "COVERED_BY_DAILY"
   }, {
     "daily" : "관리비",
-    "term" : "관리수수료",
-    "relation" : "연관어",
-    "reason" : "NOT_IN_LAW_DB"
-  }, {
-    "daily" : "관리비",
     "term" : "관리운영비",
     "relation" : "상위어",
     "reason" : "NOT_IN_LAW_DB"
@@ -1441,11 +1444,6 @@
     "term" : "비용",
     "relation" : "연관어",
     "reason" : "GENERIC_WORD"
-  }, {
-    "daily" : "관리비",
-    "term" : "선수관리비",
-    "relation" : "연관어",
-    "reason" : "NOT_IN_LAW_DB"
   }, {
     "daily" : "관리비",
     "term" : "승강기유지비",

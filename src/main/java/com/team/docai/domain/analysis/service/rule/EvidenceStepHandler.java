@@ -36,7 +36,8 @@ import java.util.List;
  *       (LawSearchService.searchWithDailyTerms)</li>
  *   <li>꼬리표의 해석 메모 1개</li>
  * </ol>
- * 조문은 기준일(law_base_date, 없으면 분석일)에 시행 중인 행. 현행본만 적재해 대신 쓴 행은 ref_text 앞에 표시한다.
+ * 조문은 기준일(law_base_date, 없으면 분석일)에 시행 중인 행. 현행 개정본만 적재해 대신 쓴 행(현행 또는 시행 예정 조문)은
+ * ref_text 앞에 표시한다 ({@link EvidenceCollector#lawRef}).
  * 찾기는 트랜잭션 밖, 저장은 {@link RuleWriter#saveRefs} 한 번.
  */
 @Slf4j
@@ -65,6 +66,7 @@ public class EvidenceStepHandler implements AnalysisStepHandler {
         Analysis analysis = analysisRepository.findById(ctx.analysisId())
                 .orElseThrow(() -> new IllegalStateException("분석이 없음: " + ctx.analysisId()));
         LocalDate baseDate = RuleValues.baseDate(analysis);
+        LocalDate today = RuleValues.analysisDate(analysis);
         List<AnalysisClause> suspicious = clauseRepository
                 .findByAnalysisIdAndExcludedFalseAndVerdictNotOrderByPageNoAscClauseIdAsc(ctx.analysisId(),
                         ClauseVerdict.UNREADABLE).stream()
@@ -77,7 +79,7 @@ public class EvidenceStepHandler implements AnalysisStepHandler {
         List<Long> lawIds = lawSearchService.findLawIds(analysis.getDocumentTypeCode());
         List<RefDraft> drafts = new ArrayList<>();
         for (AnalysisClause clause : suspicious) {
-            drafts.addAll(collect(clause, lawIds, baseDate));
+            drafts.addAll(collect(clause, lawIds, baseDate, today));
         }
         if (!drafts.isEmpty()) {
             ruleWriter.saveRefs(drafts);
@@ -85,12 +87,12 @@ public class EvidenceStepHandler implements AnalysisStepHandler {
         log.info("근거 찾기: 조항 {}개, 근거 {}개, analysisId={}", suspicious.size(), drafts.size(), ctx.analysisId());
     }
 
-    List<RefDraft> collect(AnalysisClause clause, List<Long> lawIds, LocalDate baseDate) {
+    List<RefDraft> collect(AnalysisClause clause, List<Long> lawIds, LocalDate baseDate, LocalDate today) {
         List<ExistingRef> existing = refRepository.findByClauseIdOrderByRefIdAsc(clause.getClauseId()).stream()
                 .map(ExistingRef::from).toList();
         String tag = clause.getIssueTagCode();
         List<GuidanceInfo> guidance = tag == null ? List.of() : lawSearchService.findGuidance(tag);
-        EvidenceCollector collector = new EvidenceCollector(clause.getClauseId(), existing, guidance, baseDate,
+        EvidenceCollector collector = new EvidenceCollector(clause.getClauseId(), existing, guidance, baseDate, today,
                 MAX_REFS_PER_CLAUSE);
         if (tag != null && collector.wantsMoreLaws()) {
             collector.addLaws(RefFoundBy.TAG_MAP, EvidenceCollector.orderTagArticles(

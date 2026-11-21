@@ -14,8 +14,11 @@ public interface LawArticleRepository extends JpaRepository<LawArticle, Long> {
 
     /**
      * 기준일에 유효한 행. 그 법령에 기준일 이전 시행 행이 하나도 없으면(기준일이 가장 옛 개정본보다 앞섬)
-     * 조문마다 가장 옛(가장 가까운) 개정본 행을 대신 쓴다. 지금은 현행본만 적재하므로(설계_점검 남은 일 14) 그 행은 현행 행이다.
-     * 대신 쓴 행인지는 서비스가 effective_from > 기준일 로 판단해 LawArticleInfo.fallbackToCurrent 로 알린다.
+     * 조문마다 가장 옛(가장 가까운) 개정본 행을 대신 쓴다. 지금은 법제처 목록의 현행 개정본 하나만 적재하므로(설계_점검 남은 일 14)
+     * 그 행은 보통 현행 행이지만, 현행 개정본이 공포 후 시행 전인 판이면 시행일이 오늘보다 뒤인 시행 예정 행이다
+     * (예: 민간임대주택에 관한 특별법 시행령 2027-04-28 시행판. 지금 시행 중인 이전판은 연혁 MST 라 적재하지 않음).
+     * 대신 쓴 행인지는 서비스가 effective_from > 기준일 로 판단해 LawArticleInfo.fallbackToCurrent 로 알리고,
+     * 현행·시행 예정 구분은 LawArticleInfo.substituteNote 가 한다.
      */
     String EFFECTIVE_ON = """
             ((a.effective_from <= :baseDate AND (a.effective_to IS NULL OR a.effective_to >= :baseDate))
@@ -60,7 +63,7 @@ public interface LawArticleRepository extends JpaRepository<LawArticle, Long> {
                              @Param("minScore") double minScore,
                              @Param("limit") int limit);
 
-    /** 지금 시행 중인(effective_to 없음) 행 중 tsquery 에 맞는 행 수 (일상용어 사전을 만들 때 법령용어가 DB 에 있는지 본다). */
+    /** 현행 개정본(effective_to 없음, 시행 예정 포함) 행 중 tsquery 에 맞는 행 수 (일상용어 사전을 만들 때 법령용어가 DB 에 있는지 본다). */
     @Query(value = """
             SELECT count(*) FROM law_article a
             WHERE a.search_vector @@ to_tsquery('simple', :tsquery)
