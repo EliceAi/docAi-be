@@ -24,7 +24,7 @@ import java.util.Map;
  */
 final class JudgePrompt {
 
-    static final String VERSION = "judge-v1";
+    static final String VERSION = "judge-v2";
     static final String SCHEMA_NAME = "contract_judge";
     static final List<String> VERDICTS = List.of("NEEDS_CHECK", "UNCERTAIN", "OK");
 
@@ -120,6 +120,10 @@ final class JudgePrompt {
                             .append(cmp.rightValue()).append(')');
                 }
                 body.append('\n');
+                if (c.getWhyCheck() != null && !c.getWhyCheck().isBlank()) {
+                    // 규칙 둘이 한 조항에 붙으면 뒤 규칙(휴게 등)은 why_check 에만 이어 적혀 있다
+                    body.append("규칙 결과 내용: ").append(c.getWhyCheck().replace('\n', ' ')).append('\n');
+                }
             }
             body.append("원문:\n\"\"\"\n").append(c.getOriginalText()).append("\n\"\"\"\n");
             body.append("근거 (이 조항에서 인용할 수 있는 ID):\n");

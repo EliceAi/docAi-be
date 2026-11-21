@@ -32,13 +32,16 @@ class ExtractPromptTest {
         assertMatches(items(props(clause).get("lawHints")), LawHint.class, "$.clauses.lawHints");
         Map<String, Object> keyTerm = items(props(schema).get("keyTerms"));
         assertMatches(keyTerm, ExtractResponse.KeyTerm.class, "$.keyTerms");
-        assertMatches((Map<String, Object>) props(keyTerm).get("valueJson"), ExtractResponse.ValueJson.class, "valueJson");
+        Map<String, Object> valueJson = (Map<String, Object>) props(keyTerm).get("valueJson");
+        assertMatches(valueJson, ExtractResponse.ValueJson.class, "valueJson");
+        assertMatches(items(props(valueJson).get("breaks")), ExtractResponse.TimeRange.class, "valueJson.breaks");
         assertMatches(items(props(schema).get("pages")), ExtractResponse.PageRead.class, "$.pages");
         assertMatches(items(props(schema).get("dates")), ExtractResponse.DateItem.class, "$.dates");
         assertMatches((Map<String, Object>) props(schema).get("typeCheck"), ExtractResponse.TypeCheck.class, "typeCheck");
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void 글자_칸_maxLength는_저장_칸_길이와_같다() {
         Map<String, Object> schema = ExtractPrompt.schema("EMPLOYMENT", TAGS);
         Map<String, Object> clause = props(items(props(schema).get("clauses")));
@@ -52,6 +55,14 @@ class ExtractPromptTest {
         assertThat(max(keyTerm, "value")).isEqualTo(200);
         assertThat(max(keyTerm, "evidence")).isEqualTo(300);
         assertThat(max(props((Map<String, Object>) props(schema).get("typeCheck")), "detectedTypeName")).isEqualTo(50);
+        Map<String, Object> page = props(items(props(schema).get("pages")));
+        assertThat(((Map<?, ?>) page.get("unreadableParts")).get("type")).isEqualTo("array");
+        assertThat(((Map<?, ?>) items(page.get("unreadableParts"))).get("maxLength")).isEqualTo(100);
+        Map<String, Object> valueJson = props((Map<String, Object>) keyTerm.get("valueJson"));
+        assertThat(max(valueJson, "workStart")).isEqualTo(5);
+        assertThat(max(valueJson, "workEnd")).isEqualTo(5);
+        assertThat(max(props(items(valueJson.get("breaks"))), "start")).isEqualTo(5);
+        assertThat(max(props(items(valueJson.get("breaks"))), "end")).isEqualTo(5);
         // 원문은 TEXT 라 길이 제한 없음
         assertThat(((Map<?, ?>) clause.get("originalText")).containsKey("maxLength")).isFalse();
     }
@@ -78,14 +89,20 @@ class ExtractPromptTest {
         String json = """
                 {"documentTitle":"표준근로계약서","contractDate":"2026-11-20",
                  "typeCheck":{"matchesSelected":true,"detectedTypeName":null},"wageOnlyDocument":false,
-                 "pages":[{"pageNo":1,"readState":"READ"}],
+                 "pages":[{"pageNo":1,"readState":"READ","unreadableParts":[]},
+                   {"pageNo":2,"readState":"PARTIAL","unreadableParts":["제4조 ② 마지막 줄 끝이 잘림"]}],
                  "clauses":[{"clauseKey":"c1","pageNo":1,"articleNo":"제7조","title":null,"originalText":"원문",
                    "oneLine":"요약","location":"1쪽 아래","continuesFromPreviousPage":false,"continuesToNextPage":false,
                    "issueFound":true,"issueSummary":"의심","issueTag":"PENALTY_ON_RESIGNATION",
                    "lawHints":[{"law":"근로기준법","article":"제20조"}],"searchKeywords":["위약금"],"relatedClauseKeys":[]}],
                  "keyTerms":[{"label":"임금","state":"WRITTEN","value":"시급 10,000원",
-                   "valueJson":{"type":"HOURLY","amount":10000,"basePay":9000,"hoursPerDay":null,"daysPerWeek":null,"monthlyHours":null,"start":null,"end":null},
-                   "clauseKey":"c1","evidence":"시급 10,000원"}],
+                   "valueJson":{"type":"HOURLY","amount":10000,"basePay":9000,"hoursPerDay":null,"daysPerWeek":null,"monthlyHours":null,"start":null,"end":null,
+                     "workStart":null,"workEnd":null,"breaks":[],"breakMinutes":null,"noBreak":null},
+                   "clauseKey":"c1","evidence":"시급 10,000원"},
+                  {"label":"근로시간","state":"WRITTEN","value":"14시 00분부터 18시 00분까지 (휴게시간 없음)",
+                   "valueJson":{"type":null,"amount":null,"basePay":null,"hoursPerDay":4,"daysPerWeek":null,"monthlyHours":null,"start":null,"end":null,
+                     "workStart":"14:00","workEnd":"18:00","breaks":[{"start":"12:00","end":"12:30"}],"breakMinutes":null,"noBreak":true},
+                   "clauseKey":"c1","evidence":null}],
                  "dates":[{"label":"계약 시작일","date":"2026-12-01","clauseKey":"c1"}]}
                 """;
         ObjectMapper strict = new ObjectMapper()
@@ -99,10 +116,19 @@ class ExtractPromptTest {
         assertThat(r.keyTerms().get(0).valueJson().amount()).isEqualTo(10000L);
         assertThat(r.keyTerms().get(0).valueJson().basePay()).isEqualTo(9000L);
         assertThat(r.wageOnlyDocument()).isFalse();
+        ExtractResponse.ValueJson hours = r.keyTerms().get(1).valueJson();
+        assertThat(hours.workStart()).isEqualTo("14:00");
+        assertThat(hours.workEnd()).isEqualTo("18:00");
+        assertThat(hours.breaks()).containsExactly(new ExtractResponse.TimeRange("12:00", "12:30"));
+        assertThat(hours.breakMinutes()).isNull();
+        assertThat(hours.noBreak()).isTrue();
+        assertThat(r.pages().get(0).unreadableParts()).isEmpty();
+        assertThat(r.pages().get(1).unreadableParts()).containsExactly("제4조 ② 마지막 줄 끝이 잘림");
         Map<String, Object> schema = ExtractPrompt.schema("EMPLOYMENT", TAGS);
         assertThat(props(schema).get("wageOnlyDocument")).isEqualTo(Map.of("type", "boolean"));
         assertThat(ExtractPrompt.systemPrompt("EMPLOYMENT", TAGS)).contains("wageOnlyDocument").contains("basePay")
-                .contains("monthlyHours");
+                .contains("monthlyHours").contains("workStart", "workEnd", "breaks", "breakMinutes", "noBreak",
+                        "계산하지 않고, 휴게가 충분한지 판단하지 않는다");
     }
 
     // ---- 도움 ----
@@ -140,9 +166,28 @@ class ExtractPromptTest {
     }
 
     @Test
-    void 직접_쓰는_글_칸에_clauseKey를_쓰지_말라고_하고_버전은_extract_v3() {
+    void 직접_쓰는_글_칸에_clauseKey를_쓰지_말라고_하고_버전은_extract_v4() {
         org.assertj.core.api.Assertions.assertThat(ExtractPrompt.systemPrompt("EMPLOYMENT", java.util.List.of()))
                 .contains("clauseKey(c1, c2 같은 키)를 쓰지 않는다", "조 번호(예: \"제5조\")");
-        org.assertj.core.api.Assertions.assertThat(ExtractPrompt.VERSION).isEqualTo("extract-v3");
+        org.assertj.core.api.Assertions.assertThat(ExtractPrompt.VERSION).isEqualTo("extract-v4");
+    }
+
+    @Test
+    void 쪽_읽기_지시는_못_읽은_곳을_적게_하고_기울어짐_배경_겹침만으로는_PARTIAL이_아니라고_한다() {
+        String prompt = ExtractPrompt.systemPrompt("EMPLOYMENT", TAGS);
+
+        assertThat(prompt).contains("unreadableParts", "제4조 ② 마지막 줄 끝이 잘림",
+                "READ: 모든 글자를 확실히 읽음", "확실히 읽지 못한 글자가 한 곳이라도 있음",
+                "기울어졌거나", "종이가 겹쳐 찍혔거나", "모든 글자를 확실히 읽었으면 READ 다",
+                "앞뒤 문맥으로 짐작해 채웠다면 읽은 것이 아니다", "\"3쪽 가운데 문단 흐림\"처럼 대략의 위치로",
+                "unreadableParts 에도 적지 않는다", "다음은 PARTIAL 사유가 아니다",
+                "가린 칸(검은·흰 상자, 모자이크)으로 가려진 곳. \"가려짐\"은 사유가 아니다.",
+                "조항이 다음 쪽으로 이어지거나 앞 쪽에서 이어지는 것",
+                "문서가 이 쪽에서 끝나는지, 뒤에 내용이 더 있는지 모르는 것. (글줄이 사진 가장자리에서 잘려 보이면 잘림이다)",
+                "사진 밖으로 나간 종이 여백(글자가 없는 부분)",
+                "unreadableParts 에는 흐림·잘림·접힘·빛 반사로 실제 글자를 읽지 못한 곳만 적는다")
+                .doesNotContain("하나도 댈 수 없으면");
+        // 프롬프트 캐시: 고정 지시문이 문서 종류·꼬리표 같은 바뀌는 부분보다 앞에 있다
+        assertThat(prompt.indexOf("unreadableParts")).isLessThan(prompt.indexOf("[고른 문서 종류]"));
     }
 }

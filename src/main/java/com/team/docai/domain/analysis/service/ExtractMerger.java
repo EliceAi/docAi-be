@@ -26,7 +26,9 @@ import java.util.TreeSet;
  * 1차 묶음 결과 합치기 (아키텍처 4단계, ERD 설계 결정 '묶음 병합'). DB·GPT 를 쓰지 않는 순수 계산.
  * <ol>
  *   <li>문서 종류: 첫 쪽이 든 묶음이 "다른 종류"라고 하면 TYPE_MISMATCH.</li>
- *   <li>쪽 읽기: UNREADABLE 쪽이 있으면 PAGE_UNREADABLE (가장 앞 쪽 번호). PARTIAL 쪽은 partial_pages.</li>
+ *   <li>쪽 읽기: UNREADABLE 쪽이 있으면 PAGE_UNREADABLE (가장 앞 쪽 번호). PARTIAL 쪽은 partial_pages.
+ *       PARTIAL 인데 못 읽은 곳(unreadableParts)이 비어 있으면 READ 로 낮추고 기록한다 (기울어짐·배경만으로 붙인 PARTIAL 거르기).
+ *       못 읽은 곳은 extraction_json 의 pages[].unreadableParts 에만 남는다 (API 응답은 그대로).</li>
  *   <li>조항: 묶음 경계에 걸쳐 둘로 나온 조항(앞 묶음 끝 continuesToNextPage + 뒤 묶음 첫 조항 continuesFromPreviousPage)을
  *       하나로 합치고, 겹친 쪽에서 두 번 나온 조항((쪽, 조 번호, 원문) 같음)은 하나만 남긴다. 키는 GPT 값을 쓰지 않고
  *       쪽·읽은 순서로 c1, c2 ... 를 새로 매긴다. 관련 조항도 새 키로 바꾸고 같은 쌍(방향 무관)은 하나만.</li>
@@ -46,6 +48,11 @@ final class ExtractMerger {
     static final String STAGE = "EXTRACT";
     /** GPT 가 지은 글 속 조항 키를 바꿀 말 */
     static final String RELATED_CLAUSE = "관련 조항";
+    /** 쪽 하나에 남길 못 읽은 곳 설명 최대 개수 (스키마에 maxItems 를 두지 않아 서버에서 자른다) */
+    static final int UNREADABLE_PARTS_MAX_ITEMS = 10;
+    /** 근로시간 시각 "H:mm"·"HH:mm" ("14시 00분" 같은 글은 GPT 가 HH:mm 으로 옮긴다) */
+    private static final java.util.regex.Pattern TIME = java.util.regex.Pattern.compile("(\\d{1,2}):(\\d{2})");
+    private static final int MINUTES_PER_DAY = 24 * 60;
 
     record ChunkResult(int chunkNo, int pageFrom, int pageTo, ExtractResponse response) {
     }
@@ -88,13 +95,32 @@ final class ExtractMerger {
 
         // 1. 쪽 읽기 (못 읽은 쪽이 있으면 종류 판단보다 먼저: 못 읽은 사진으로 "다른 종류"라고 판단할 수 있어서)
         Map<Integer, String> pageStates = new HashMap<>();
+        Map<Integer, Set<String>> pageParts = new HashMap<>();
         for (ChunkResult chunk : chunks) {
             for (ExtractResponse.PageRead page : nullSafe(chunk.response().pages())) {
                 if (page.pageNo() < chunk.pageFrom() || page.pageNo() > chunk.pageTo()) {
                     log.add(entry("PAGE_OUT_OF_RANGE", "pages", "chunk " + chunk.chunkNo() + " page " + page.pageNo()));
                     continue;
                 }
-                pageStates.merge(page.pageNo(), page.readState(), ExtractMerger::worseReadState);
+                String target = "pages " + page.pageNo() + ".unreadableParts";
+                String readState = page.readState();
+                if ("PARTIAL".equals(readState)) {
+                    List<String> parts = unreadableParts(page.unreadableParts(), target, log);
+                    if (parts.isEmpty()) {
+                        // 못 읽은 곳을 대지 못한 PARTIAL (기울어짐·배경만으로 붙인 경우)은 경고하지 않는다
+                        log.add(entry("PARTIAL_WITHOUT_PARTS", "pages",
+                                "chunk " + chunk.chunkNo() + " page " + page.pageNo() + " (READ 로 낮춤)"));
+                        readState = "READ";
+                    } else {
+                        pageParts.computeIfAbsent(page.pageNo(), k -> new LinkedHashSet<>()).addAll(parts);
+                    }
+                } else if ("READ".equals(readState)) {
+                    long ignored = nullSafe(page.unreadableParts()).stream().filter(s -> !s.isBlank()).count();
+                    if (ignored > 0) {
+                        log.add(entry("PARTS_IGNORED", target, "READ 쪽의 " + ignored + "개 (저장 안 함)"));
+                    }
+                }
+                pageStates.merge(page.pageNo(), readState, ExtractMerger::worseReadState);
             }
             for (int p = chunk.pageFrom(); p <= chunk.pageTo(); p++) {
                 if (!pageStates.containsKey(p)) {
@@ -276,7 +302,22 @@ final class ExtractMerger {
             keyTermJson.add(m);
         }
         List<Map<String, Object>> pagesJson = new ArrayList<>();
-        new TreeSet<>(pageStates.keySet()).forEach(p -> pagesJson.add(Map.of("pageNo", p, "readState", pageStates.get(p))));
+        for (Integer p : new TreeSet<>(pageStates.keySet())) {
+            String readState = pageStates.get(p);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("pageNo", p);
+            m.put("readState", readState);
+            List<String> parts = "PARTIAL".equals(readState)
+                    ? List.copyOf(pageParts.getOrDefault(p, Set.of())) : List.of();
+            if (parts.size() > UNREADABLE_PARTS_MAX_ITEMS) {
+                // 겹친 쪽은 여러 묶음 설명을 합친 뒤에 센다
+                log.add(entry("TOO_MANY", "pages " + p + ".unreadableParts",
+                        parts.size() + "개 > " + UNREADABLE_PARTS_MAX_ITEMS + "개, 앞쪽만 저장"));
+                parts = parts.subList(0, UNREADABLE_PARTS_MAX_ITEMS);
+            }
+            m.put("unreadableParts", parts);
+            pagesJson.add(m);
+        }
         Map<String, Object> extraction = new LinkedHashMap<>();
         extraction.put("promptVersion", ExtractPrompt.VERSION);
         extraction.put("documentTypeCode", documentTypeCode);
@@ -375,6 +416,11 @@ final class ExtractMerger {
         all.put("monthlyHours", v.monthlyHours());
         all.put("start", dateOrNull(v.start(), term.label() + ".start", log));
         all.put("end", dateOrNull(v.end(), term.label() + ".end", log));
+        all.put("workStart", timeOrNull(v.workStart(), term.label() + ".workStart", log));
+        all.put("workEnd", timeOrNull(v.workEnd(), term.label() + ".workEnd", log));
+        all.put("breaks", breaksOrNull(v.breaks(), term.label() + ".breaks", log));
+        all.put("breakMinutes", breakMinutesOrNull(v.breakMinutes(), term.label() + ".breakMinutes", log));
+        all.put("noBreak", Boolean.TRUE.equals(v.noBreak()) ? Boolean.TRUE : null);
         Map<String, Object> picked = new LinkedHashMap<>();
         boolean any = false;
         for (String key : term.valueKeys()) {
@@ -386,6 +432,60 @@ final class ExtractMerger {
             any |= value != null;
         }
         return any ? picked : null;
+    }
+
+    /** "H:mm"·"HH:mm" (00:00~24:00) → "HH:mm". 그 밖은 null 로 바꾸고 기록 */
+    static String timeOrNull(String value, String target, List<Map<String, Object>> log) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        java.util.regex.Matcher m = TIME.matcher(value.trim());
+        if (m.matches()) {
+            int h = Integer.parseInt(m.group(1));
+            int min = Integer.parseInt(m.group(2));
+            if (h < 24 && min < 60 || h == 24 && min == 0) {
+                return String.format("%02d:%02d", h, min);
+            }
+        }
+        log.add(entry("TIME_INVALID", "valueJson " + target, "null 로 바꿈"));
+        return null;
+    }
+
+    /** 휴게 구간: 시각이 둘 다 맞는 것만 남긴다. 남는 것이 없으면 null (키를 넣지 않음) */
+    private static List<Map<String, Object>> breaksOrNull(List<ExtractResponse.TimeRange> ranges, String target,
+                                                          List<Map<String, Object>> log) {
+        if (ranges == null || ranges.isEmpty()) {
+            return null;
+        }
+        List<Map<String, Object>> kept = new ArrayList<>();
+        for (ExtractResponse.TimeRange r : ranges) {
+            if (r == null) {
+                continue;
+            }
+            String start = timeOrNull(r.start(), target + ".start", log);
+            String end = timeOrNull(r.end(), target + ".end", log);
+            if (start == null || end == null || start.equals(end)) {
+                log.add(entry("BREAK_INVALID", "valueJson " + target, "구간 버림"));
+                continue;
+            }
+            Map<String, Object> range = new LinkedHashMap<>();
+            range.put("start", start);
+            range.put("end", end);
+            kept.add(range);
+        }
+        return kept.isEmpty() ? null : kept;
+    }
+
+    /** 휴게 분: 1~1440 만. 0 은 "적혀 있지 않음"과 구분되지 않아 버린다 (없음은 noBreak 로 받음) */
+    private static Integer breakMinutesOrNull(Integer value, String target, List<Map<String, Object>> log) {
+        if (value == null) {
+            return null;
+        }
+        if (value < 1 || value > MINUTES_PER_DAY) {
+            log.add(entry("BREAK_INVALID", "valueJson " + target, value + " → null"));
+            return null;
+        }
+        return value;
     }
 
     private static String dateOrNull(String value, String target, List<Map<String, Object>> log) {
@@ -511,6 +611,20 @@ final class ExtractMerger {
     static String withoutKeys(String value, String target, List<Map<String, Object>> log) {
         return ClauseKeyText.replace(value, k -> RELATED_CLAUSE,
                 (found, replaced) -> log.add(entry("CLAUSE_KEY_REPLACED", target, found + " → " + replaced)));
+    }
+
+    /** PARTIAL 쪽의 못 읽은 곳 설명 (GPT 가 지은 글): 빈 칸 빼고, 조항 키를 바꾸고, 칸 길이로 자르고, 같은 글은 하나만.
+     *  개수 제한은 겹친 쪽을 합친 뒤에 한다 */
+    private static List<String> unreadableParts(List<String> raw, String target, List<Map<String, Object>> log) {
+        Set<String> parts = new LinkedHashSet<>();
+        for (String s : nullSafe(raw)) {
+            String v = written(withoutKeys(s == null ? null : s.strip(), target, log),
+                    ExtractPrompt.UNREADABLE_PART_MAX, target, log);
+            if (v != null) {
+                parts.add(v);
+            }
+        }
+        return List.copyOf(parts);
     }
 
     /** 계약서에서 온 글: 자르지 않고 넘으면 null + 기록 */

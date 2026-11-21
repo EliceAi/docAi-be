@@ -43,6 +43,8 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>최저임금(MIN_WAGE, 근로계약서): 기준일(law_base_date, 없으면 분석일)에 적용되는 기준값과 비교.
  *       미달이면 임금이 나온 조항(key_term.clause_id)에 의심 표시·RULE 근거(cited = true)·숫자 비교를 붙인다</li>
+ *   <li>휴게시간(근로계약서, {@link BreakTimeRule}): 근로시간 value_json 의 시업·종업·휴게로 계산, 부족하면 근로시간 조항에
+ *       의심 표시·RULE 근거(NO_BREAK_TIME 꼬리표 조문)·숫자 비교를 붙인다. 정보가 모자라면 판정하지 않는다</li>
  *   <li>빠진 필수 항목: {@link RequiredItems} 목록 대비 MISSING → analysis_finding MISSING_ITEM (근거 조문 연결)</li>
  *   <li>기한(DEADLINE): 지금 DB 에 근거 법령이 있는 기한 규칙이 없어 만들지 않는다 (임대차 신고는 부동산 거래신고법 미적재)</li>
  * </ul>
@@ -59,6 +61,9 @@ public class RuleStepHandler implements AnalysisStepHandler {
     static final String MIN_WAGE = "MIN_WAGE";
     static final Set<String> WAGE_LABELS = Set.of("임금", "급여");
     static final Set<String> HOURS_LABELS = Set.of("근로시간", "소정근로시간");
+    /** 휴게 규칙 근거: 근로기준법 제54조 제1항 */
+    static final int BREAK_ARTICLE_NO = 54;
+    static final int BREAK_PARAGRAPH_NO = 1;
 
     private final AnalysisRepository analysisRepository;
     private final AnalysisKeyTermRepository keyTermRepository;
@@ -83,6 +88,7 @@ public class RuleStepHandler implements AnalysisStepHandler {
         List<AnalysisKeyTerm> keyTerms = keyTermRepository.findByAnalysisIdOrderBySortOrderAsc(ctx.analysisId());
         if ("EMPLOYMENT".equals(documentType)) {
             checkMinimumWage(ctx.analysisId(), keyTerms, baseDate);
+            checkBreakTime(ctx.analysisId(), keyTerms, baseDate);
         }
         saveMissingItems(ctx.analysisId(), documentType, keyTerms, baseDate,
                 wageOnlyDocument(objectMapper, analysis.getExtractionJson()));
@@ -121,12 +127,66 @@ public class RuleStepHandler implements AnalysisStepHandler {
         }
         List<ExistingRef> existing = refRepository.findByClauseIdOrderByRefIdAsc(clauseId).stream()
                 .map(ExistingRef::from).toList();
+        if (alreadyAttached(existing, standard.lawArticleId())) {
+            log.info("최저임금 근거가 이미 붙어 있어 건너뜀: analysisId={}, clauseId={}", analysisId, clauseId);
+            return;
+        }
         RefDraft ref = EvidenceCollector.lawRef(clauseId, "L" + EvidenceCollector.nextNumber(existing),
                 RefFoundBy.RULE, true, article.get(0), baseDate);
         boolean applied = ruleWriter.applyRuleResult(analysisId, clauseId, result.comparison(), result.headline(),
                 result.whyCheck(), ref);
         log.info("최저임금 미달 {}: analysisId={}, clauseId={}", applied ? "붙임" : "못 붙임(판정 중 조항 아님)",
                 analysisId, clauseId);
+    }
+
+    /**
+     * 휴게시간 ({@link BreakTimeRule}). 부족하면 근로시간이 나온 조항(key_term.clause_id)에 의심 표시·RULE 근거(cited = true,
+     * NO_BREAK_TIME 꼬리표에 연결된 조문 중 근로기준법 제54조 제1항)·숫자 비교를 붙인다.
+     * 판정할 정보가 없으면(시각·휴게 모름) 아무것도 하지 않아 2차(GPT) 판단에 맡긴다.
+     */
+    void checkBreakTime(Long analysisId, List<AnalysisKeyTerm> keyTerms, LocalDate baseDate) {
+        Optional<AnalysisKeyTerm> hours = findWithValue(keyTerms, HOURS_LABELS);
+        if (hours.isEmpty()) {
+            log.info("휴게시간 규칙 건너뜀 (근로시간 값 없음): analysisId={}", analysisId);
+            return;
+        }
+        BreakTimeRule.Result result = BreakTimeRule.check(hours.get().getValueJson());
+        if (result.outcome() != BreakTimeRule.Outcome.SHORTFALL) {
+            log.info("휴게시간 규칙 결과 {}{}: analysisId={}", result.outcome(),
+                    result.skipReason() == null ? "" : " (" + result.skipReason() + ")", analysisId);
+            return;
+        }
+        Long clauseId = hours.get().getClauseId();
+        if (clauseId == null) {
+            log.warn("휴게시간 부족이지만 근로시간이 나온 조항이 없어 붙이지 못함: analysisId={}", analysisId);
+            return;
+        }
+        // 규칙 근거는 계산 기준인 제54조 제1항 하나 (cited). 제2항(자유 이용)은 6단계가 꼬리표 조문(TAG_MAP, 인용 안 함)으로 붙인다
+        Optional<LawArticleInfo> article = lawSearchService.findByIssueTag(RuleWriter.NO_BREAK_TIME_TAG).stream()
+                .filter(a -> a.articleNo() == BREAK_ARTICLE_NO && a.articleBranchNo() == 0
+                        && Integer.valueOf(BREAK_PARAGRAPH_NO).equals(a.paragraphNo()))
+                .findFirst();
+        if (article.isEmpty()) {
+            log.error("휴게시간 근거 조문(근로기준법 제54조 제1항)이 issue_tag_article {} 에 없음", RuleWriter.NO_BREAK_TIME_TAG);
+            return;
+        }
+        List<ExistingRef> existing = refRepository.findByClauseIdOrderByRefIdAsc(clauseId).stream()
+                .map(ExistingRef::from).toList();
+        if (alreadyAttached(existing, article.get().lawArticleId())) {
+            log.info("휴게시간 근거가 이미 붙어 있어 건너뜀: analysisId={}, clauseId={}", analysisId, clauseId);
+            return;
+        }
+        List<RefDraft> refs = List.of(EvidenceCollector.lawRef(clauseId, "L" + EvidenceCollector.nextNumber(existing),
+                RefFoundBy.RULE, true, article.get(), baseDate));
+        boolean applied = ruleWriter.applyRuleResult(analysisId, clauseId, RuleWriter.NO_BREAK_TIME_TAG,
+                result.comparison(), result.headline(), result.whyCheck(), refs);
+        log.info("휴게시간 부족 {}: analysisId={}, clauseId={}", applied ? "붙임" : "못 붙임(판정 중 조항 아님)",
+                analysisId, clauseId);
+    }
+
+    /** 같은 조문 근거가 이미 그 조항에 있으면 규칙 결과를 다시 붙이지 않는다 (단계를 다시 돌려도 근거·이유가 겹치지 않게) */
+    private static boolean alreadyAttached(List<ExistingRef> existing, Long lawArticleId) {
+        return existing.stream().anyMatch(r -> lawArticleId.equals(r.lawArticleId()));
     }
 
     void saveMissingItems(Long analysisId, String documentType, List<AnalysisKeyTerm> keyTerms, LocalDate baseDate,

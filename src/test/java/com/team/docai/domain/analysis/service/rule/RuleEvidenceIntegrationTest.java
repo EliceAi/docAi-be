@@ -218,6 +218,105 @@ class RuleEvidenceIntegrationTest {
                 + " on c.clause_id = r.clause_id where c.analysis_id = ?", Long.class, analysisId)).isZero();
     }
 
+    @Test
+    void 정답세트_04_네_시간_휴게_없음은_근로시간_조항에_휴게_규칙_결과와_제54조_근거가_붙는다() {
+        AnalysisClause hoursClause = clause("c4", "제4조", false, null, null, null);
+        AnalysisClause wageClause = clause("c6", "제6조", false, null, null, null);
+        Map<String, Object> hours = new HashMap<>();
+        hours.put("hoursPerDay", 4);
+        hours.put("daysPerWeek", 5);
+        hours.put("workStart", "14:00");
+        hours.put("workEnd", "18:00");
+        hours.put("noBreak", true);
+        keyTerm("근로시간", hoursClause.getClauseId(), hours, KeyTermState.OK, 1);
+        keyTerm("임금", wageClause.getClauseId(), Map.of("type", "HOURLY", "amount", 10320), KeyTermState.OK, 2);
+
+        run();
+
+        Map<String, Object> row = jdbc.queryForMap("select issue_found, basis_type, verdict, headline, why_check,"
+                + " issue_tag_code, comparison_json->>'leftValue' as lv, comparison_json->>'rightValue' as rv"
+                + " from analysis_clause where clause_id = ?", hoursClause.getClauseId());
+        assertThat(row.get("issue_found")).isEqualTo(true);
+        assertThat(row.get("basis_type")).isEqualTo("RULE");
+        assertThat(row.get("verdict")).isEqualTo("JUDGING");
+        assertThat(row.get("headline")).isEqualTo("하루 4시간 일하는데 휴게시간이 없어요");
+        assertThat((String) row.get("why_check")).contains("4시간이면 30분");
+        assertThat(row.get("issue_tag_code")).isEqualTo("NO_BREAK_TIME");
+        assertThat(row.get("lv")).isEqualTo("0분");
+        assertThat(row.get("rv")).isEqualTo("30분");
+        List<AnalysisClauseRef> refs = refRepository.findByClauseIdOrderByRefIdAsc(hoursClause.getClauseId());
+        assertThat(refs).extracting(AnalysisClauseRef::getLawArticleId).doesNotHaveDuplicates();
+        // 규칙 근거는 제54조 제1항 하나 (RULE, 인용). 제2항은 6단계 꼬리표 조문으로 붙고 인용하지 않는다
+        AnalysisClauseRef ruleRef = refs.get(0);
+        assertThat(ruleRef.getLawArticleId()).isEqualTo(articleId("근로기준법", 54, 1));
+        assertThat(ruleRef.getRefLabel()).isEqualTo("L1");
+        assertThat(ruleRef.getFoundBy()).isEqualTo(RefFoundBy.RULE);
+        assertThat(ruleRef.isCited()).isTrue();
+        assertThat(refs.subList(1, refs.size())).allMatch(r -> !r.isCited() && r.getFoundBy() != RefFoundBy.RULE);
+        assertThat(refs).filteredOn(r -> r.getLawArticleId().equals(articleId("근로기준법", 54, 2)))
+                .singleElement().satisfies(r -> {
+                    assertThat(r.getFoundBy()).isEqualTo(RefFoundBy.TAG_MAP);
+                    assertThat(r.isCited()).isFalse();
+                });
+        // 최저임금은 통과 (10,320원 = 2026년 최저임금)
+        assertThat(clauseRow(wageClause.getClauseId()).get("basis_type")).isNull();
+
+        // 다시 돌려도 근거·이유가 겹쳐 붙지 않는다
+        ruleStepHandler.checkBreakTime(analysisId, keyTermRepository.findByAnalysisIdOrderBySortOrderAsc(analysisId),
+                LocalDate.of(2026, 11, 20));
+        assertThat(refRepository.findByClauseIdOrderByRefIdAsc(hoursClause.getClauseId())).hasSameSizeAs(refs);
+        assertThat(clauseRow(hoursClause.getClauseId()).get("why_check")).isEqualTo(row.get("why_check"));
+    }
+
+    @Test
+    void 정답세트_03_휴게_1시간과_정보_없는_근로시간은_휴게_규칙을_붙이지_않는다() {
+        AnalysisClause hoursClause = clause("c4", "제4조", false, null, null, null);
+        Map<String, Object> hours = new HashMap<>();
+        hours.put("hoursPerDay", 8);
+        hours.put("daysPerWeek", 5);
+        hours.put("workStart", "09:00");
+        hours.put("workEnd", "18:00");
+        hours.put("breaks", List.of(Map.of("start", "12:00", "end", "13:00")));
+        keyTerm("근로시간", hoursClause.getClauseId(), hours, KeyTermState.OK, 1);
+
+        ruleStepHandler.checkBreakTime(analysisId, keyTermRepository.findByAnalysisIdOrderBySortOrderAsc(analysisId),
+                LocalDate.of(2026, 11, 20));
+
+        assertThat(clauseRow(hoursClause.getClauseId()).get("basis_type")).isNull();
+        assertThat(refRepository.findByClauseIdOrderByRefIdAsc(hoursClause.getClauseId())).isEmpty();
+    }
+
+    @Test
+    void 최저임금과_휴게가_같은_조항이면_앞_규칙의_제목은_두고_이유와_근거를_더한다() {
+        AnalysisClause c = clause("c4", "제4조", false, null, null, null);
+        Map<String, Object> hours = new HashMap<>();
+        hours.put("hoursPerDay", 9);
+        hours.put("daysPerWeek", 5);
+        hours.put("workStart", "09:00");
+        hours.put("workEnd", "18:00");
+        hours.put("noBreak", true);
+        keyTerm("근로시간", c.getClauseId(), hours, KeyTermState.OK, 1);
+        keyTerm("임금", c.getClauseId(), Map.of("type", "HOURLY", "amount", 10000), KeyTermState.OK, 2);
+
+        ruleStepHandler.execute(ctx);
+
+        Map<String, Object> row = clauseRow(c.getClauseId());
+        assertThat(row.get("basis_type")).isEqualTo("RULE");
+        assertThat(row.get("headline")).isEqualTo("시급이 2026년 최저임금보다 낮아요");
+        assertThat(row.get("issue_tag_code")).isEqualTo("MIN_WAGE_SHORTFALL");
+        assertThat((String) row.get("why_check")).contains("시간당 320원").contains("8시간이면 1시간");
+        List<AnalysisClauseRef> refs = refRepository.findByClauseIdOrderByRefIdAsc(c.getClauseId());
+        assertThat(refs).extracting(AnalysisClauseRef::getRefLabel).containsExactly("L1", "L2");
+        assertThat(refs).allMatch(r -> r.getFoundBy() == RefFoundBy.RULE && r.isCited());
+        assertThat(refs.get(1).getLawArticleId()).isEqualTo(articleId("근로기준법", 54, 1));
+
+        // 다시 돌려도 최저임금·휴게 근거와 이유가 겹쳐 붙지 않는다
+        String why = (String) row.get("why_check");
+        ruleStepHandler.execute(ctx);
+        assertThat(refRepository.findByClauseIdOrderByRefIdAsc(c.getClauseId())).hasSize(2);
+        assertThat(clauseRow(c.getClauseId()).get("why_check")).isEqualTo(why);
+    }
+
     EvidenceCollector.RefDraft ruleRef(Long clauseId) {
         return new EvidenceCollector.RefDraft(clauseId, "L1", articleId("최저임금법", 6, 1), null,
                 RefFoundBy.RULE, true, "최저임금법 제6조제1항", "내용");

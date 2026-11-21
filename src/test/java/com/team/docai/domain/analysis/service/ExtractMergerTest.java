@@ -199,7 +199,8 @@ class ExtractMergerTest {
     @Test
     void 일부만_읽은_쪽은_partialPages로_빠진_쪽_상태는_READ로_보고_기록한다() {
         ExtractResponse r = withPages(response(1, 4, List.of(), List.of()), List.of(
-                new ExtractResponse.PageRead(4, "PARTIAL"), new ExtractResponse.PageRead(2, "PARTIAL"),
+                new ExtractResponse.PageRead(4, "PARTIAL", List.of("4쪽 아래 서명란 위 두 줄 흐림")),
+                new ExtractResponse.PageRead(2, "PARTIAL", List.of("제4조 ② 마지막 줄 끝이 잘림")),
                 new ExtractResponse.PageRead(1, "READ"), new ExtractResponse.PageRead(9, "UNREADABLE")));
 
         ExtractMerger.Result merged = merge(chunk(1, 1, 4, r));
@@ -207,6 +208,142 @@ class ExtractMergerTest {
         assertThat(merged.failure()).isNull();
         assertThat(merged.partialPages()).containsExactly(2, 4);
         assertThat(logTypes(merged)).contains("PAGE_STATE_MISSING", "PAGE_OUT_OF_RANGE");
+    }
+
+    @Test
+    void PARTIAL인데_못_읽은_곳이_비면_READ로_낮추고_기록한다() {
+        List<String> blank = new java.util.ArrayList<>();
+        blank.add("  ");
+        blank.add(null);
+        ExtractResponse r = withPages(response(1, 3, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(1, "PARTIAL"),
+                new ExtractResponse.PageRead(2, "PARTIAL", blank),
+                new ExtractResponse.PageRead(3, "PARTIAL", null)));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 3, r));
+
+        assertThat(merged.failure()).isNull();
+        assertThat(merged.partialPages()).isEmpty();
+        assertThat(logTypes(merged).stream().filter("PARTIAL_WITHOUT_PARTS"::equals)).hasSize(3);
+        assertThat(pagesJson(merged)).allSatisfy(p -> assertThat(p)
+                .containsEntry("readState", "READ").containsEntry("unreadableParts", List.of()));
+    }
+
+    @Test
+    void PARTIAL에_못_읽은_곳이_있으면_PARTIAL로_남고_extraction에_담긴다() {
+        ExtractResponse a = withPages(response(1, 2, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(1, "READ", List.of("쓸데없는 설명")),
+                new ExtractResponse.PageRead(2, "PARTIAL", List.of("제4조 ② 마지막 줄 끝이 잘림", "c3 조항 아래 흐림"))));
+        // 겹친 쪽 2: 다른 묶음이 READ 라고 해도 더 나쁜 PARTIAL 과 그 설명이 남는다
+        ExtractResponse b = withPages(response(2, 3, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(2, "READ"),
+                new ExtractResponse.PageRead(3, "PARTIAL", List.of("x".repeat(150)))));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 2, a), chunk(2, 2, 3, b));
+
+        assertThat(merged.failure()).isNull();
+        assertThat(merged.partialPages()).containsExactly(2, 3);
+        List<Map<String, Object>> pages = pagesJson(merged);
+        assertThat(pages.get(0)).containsEntry("readState", "READ").containsEntry("unreadableParts", List.of());
+        assertThat(pages.get(1)).containsEntry("readState", "PARTIAL")
+                .containsEntry("unreadableParts", List.of("제4조 ② 마지막 줄 끝이 잘림", "관련 조항 아래 흐림"));
+        assertThat(pages.get(2)).containsEntry("unreadableParts", List.of("x".repeat(100)));
+        assertThat(logTypes(merged)).contains("PARTS_IGNORED", "CLAUSE_KEY_REPLACED", "TOO_LONG")
+                .doesNotContain("PARTIAL_WITHOUT_PARTS");
+    }
+
+    @Test
+    void 못_읽은_곳이_너무_많으면_앞쪽만_남긴다() {
+        List<String> many = java.util.stream.IntStream.rangeClosed(1, 12).mapToObj(i -> i + "번째 줄 흐림").toList();
+        ExtractResponse r = withPages(response(1, 1, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(1, "PARTIAL", many)));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 1, r));
+
+        assertThat((List<?>) pagesJson(merged).get(0).get("unreadableParts")).hasSize(10);
+        assertThat(logTypes(merged)).contains("TOO_MANY");
+    }
+
+    @Test
+    void UNREADABLE_쪽은_못_읽은_곳_없이도_그대로_PAGE_UNREADABLE() {
+        ExtractResponse r = withPages(response(1, 2, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(1, "PARTIAL", List.of("1쪽 맨 아래 줄 잘림")),
+                new ExtractResponse.PageRead(2, "UNREADABLE")));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 2, r));
+
+        assertThat(merged.failure()).isEqualTo(new ExtractMerger.Failure(AnalysisFailReason.PAGE_UNREADABLE, 2, null));
+        assertThat(logTypes(merged)).doesNotContain("PARTIAL_WITHOUT_PARTS");
+    }
+
+    @Test
+    void 겹친_쪽이_두_묶음_모두_PARTIAL이면_설명을_합치고_같은_글은_하나만() {
+        ExtractResponse a = withPages(response(1, 2, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(1, "READ"),
+                new ExtractResponse.PageRead(2, "PARTIAL", List.of("제4조 ② 마지막 줄 끝이 잘림", "2쪽 아래 흐림"))));
+        ExtractResponse b = withPages(response(2, 3, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(2, "PARTIAL", List.of(" 2쪽 아래 흐림 ", "2쪽 오른쪽 위 접힘")),
+                new ExtractResponse.PageRead(3, "READ")));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 2, a), chunk(2, 2, 3, b));
+
+        assertThat(merged.partialPages()).containsExactly(2);
+        assertThat(pagesJson(merged).get(1)).containsEntry("readState", "PARTIAL").containsEntry("unreadableParts",
+                List.of("제4조 ② 마지막 줄 끝이 잘림", "2쪽 아래 흐림", "2쪽 오른쪽 위 접힘"));
+        assertThat(logTypes(merged)).doesNotContain("TOO_MANY");
+    }
+
+    @Test
+    void 겹친_쪽_설명을_합쳐_10개를_넘으면_10개만_남기고_기록한다() {
+        List<String> first = java.util.stream.IntStream.rangeClosed(1, 6).mapToObj(i -> "앞 묶음 " + i + "번째 줄 흐림").toList();
+        List<String> second = java.util.stream.IntStream.rangeClosed(1, 6).mapToObj(i -> "뒤 묶음 " + i + "번째 줄 흐림").toList();
+        ExtractResponse a = withPages(response(1, 2, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(1, "READ"), new ExtractResponse.PageRead(2, "PARTIAL", first)));
+        ExtractResponse b = withPages(response(2, 3, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(2, "PARTIAL", second), new ExtractResponse.PageRead(3, "READ")));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 2, a), chunk(2, 2, 3, b));
+
+        @SuppressWarnings("unchecked")
+        List<String> parts = (List<String>) pagesJson(merged).get(1).get("unreadableParts");
+        assertThat(parts).hasSize(10).startsWith(first.toArray(new String[0])).contains("뒤 묶음 4번째 줄 흐림")
+                .doesNotContain("뒤 묶음 5번째 줄 흐림");
+        assertThat(logTypes(merged)).containsOnlyOnce("TOO_MANY");
+    }
+
+    @Test
+    void 겹친_쪽이_한_묶음은_UNREADABLE_다른_묶음은_PARTIAL이면_PAGE_UNREADABLE() {
+        ExtractResponse a = withPages(response(1, 2, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(1, "READ"), new ExtractResponse.PageRead(2, "UNREADABLE")));
+        ExtractResponse b = withPages(response(2, 3, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(2, "PARTIAL", List.of("2쪽 가운데 문단 흐림")),
+                new ExtractResponse.PageRead(3, "READ")));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 2, a), chunk(2, 2, 3, b));
+
+        assertThat(merged.failure()).isEqualTo(new ExtractMerger.Failure(AnalysisFailReason.PAGE_UNREADABLE, 2, null));
+    }
+
+    @Test
+    void 겹친_쪽이_한_묶음은_PARTIAL_빈_목록_다른_묶음은_PARTIAL_설명이면_PARTIAL로_남는다() {
+        ExtractResponse a = withPages(response(1, 2, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(1, "READ"), new ExtractResponse.PageRead(2, "PARTIAL")));
+        ExtractResponse b = withPages(response(2, 3, List.of(), List.of()), List.of(
+                new ExtractResponse.PageRead(2, "PARTIAL", List.of("3쪽 가운데 문단 흐림")),
+                new ExtractResponse.PageRead(3, "READ")));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 2, a), chunk(2, 2, 3, b));
+
+        assertThat(merged.failure()).isNull();
+        assertThat(merged.partialPages()).containsExactly(2);
+        assertThat(pagesJson(merged).get(1)).containsEntry("readState", "PARTIAL")
+                .containsEntry("unreadableParts", List.of("3쪽 가운데 문단 흐림"));
+        assertThat(logTypes(merged)).containsOnlyOnce("PARTIAL_WITHOUT_PARTS");
+    }
+
+    @SuppressWarnings("unchecked")
+    static List<Map<String, Object>> pagesJson(ExtractMerger.Result r) {
+        return (List<Map<String, Object>>) r.extraction().get("pages");
     }
 
     @Test
@@ -280,7 +417,7 @@ class ExtractMergerTest {
         assertThat(dates).hasSize(1);
         assertThat(dates.get(0)).containsEntry("clauseKey", "c1").containsEntry("date", "2026-12-01");
         assertThat(merged.extraction()).containsEntry("contractDate", "2026-11-20")
-                .containsEntry("promptVersion", "extract-v3")
+                .containsEntry("promptVersion", "extract-v4")
                 .containsEntry("wageOnlyDocument", false);
     }
 
@@ -355,6 +492,45 @@ class ExtractMergerTest {
         // basePay 가 없으면 키도 넣지 않아 기존 모양 {type, amount}
         ExtractResponse plain = response(1, 1, List.of(), List.of(written("임금", "월 250만", null, null, wage("MONTHLY", 2500000))));
         assertThat(merge(chunk(1, 1, 1, plain)).keyTerms().get(5).valueJson()).isEqualTo(Map.of("type", "MONTHLY", "amount", 2500000L));
+    }
+
+    @Test
+    void 근로시간의_시각과_휴게는_값이_있을_때만_남고_시각_형식을_맞추고_틀린_값은_버린다() {
+        ExtractResponse.ValueJson v = new ExtractResponse.ValueJson(null, null, null, 4.0, 5.0, null, null, null,
+                "9:00", "18:00", List.of(new ExtractResponse.TimeRange("12:00", "13:00"),
+                new ExtractResponse.TimeRange("25:00", "13:00"), new ExtractResponse.TimeRange("15:00", "15:00")),
+                0, true);
+        ExtractResponse r = response(1, 1, List.of(clause("c1", 1, "제4조", "소정근로시간", "x")),
+                List.of(written("근로시간", "09시 00분부터 18시 00분까지", "c1", "x", v),
+                        written("임금", "시급 10,320원", "c1", "x",
+                                new ExtractResponse.ValueJson("HOURLY", 10320L, null, null, null, null, null, null,
+                                        "09:00", "18:00", List.of(), 30, true))));
+
+        ExtractMerger.Result merged = merge(chunk(1, 1, 1, r));
+
+        Map<String, ExtractMerger.MergedKeyTerm> byLabel = new java.util.HashMap<>();
+        merged.keyTerms().forEach(t -> byLabel.put(t.label(), t));
+        Map<String, Object> hours = new java.util.LinkedHashMap<>();
+        hours.put("hoursPerDay", 4.0);
+        hours.put("daysPerWeek", 5.0);
+        hours.put("workStart", "09:00");
+        hours.put("workEnd", "18:00");
+        hours.put("breaks", List.of(Map.of("start", "12:00", "end", "13:00")));
+        hours.put("noBreak", true);
+        assertThat(byLabel.get("근로시간").valueJson()).isEqualTo(hours);
+        // 임금 항목에는 근로시간 칸을 남기지 않는다
+        assertThat(byLabel.get("임금").valueJson()).isEqualTo(Map.of("type", "HOURLY", "amount", 10320L));
+        assertThat(merged.validationLog()).extracting(e -> e.get("type"))
+                .contains("TIME_INVALID", "BREAK_INVALID");
+
+        // 시각·휴게가 없으면 키도 넣지 않아 기존 모양 {hoursPerDay, daysPerWeek}
+        ExtractResponse plain = response(1, 1, List.of(), List.of(written("근로시간", "1일 8시간", null, null,
+                new ExtractResponse.ValueJson(null, null, 8.0, 5.0, null, null))));
+        Map<String, Object> plainHours = merge(chunk(1, 1, 1, plain)).keyTerms().stream()
+                .filter(t -> t.label().equals("근로시간")).findFirst().orElseThrow().valueJson();
+        assertThat(plainHours).isEqualTo(Map.of("hoursPerDay", 8.0, "daysPerWeek", 5.0));
+        assertThat(ExtractMerger.timeOrNull("24:00", "t", new java.util.ArrayList<>())).isEqualTo("24:00");
+        assertThat(ExtractMerger.timeOrNull("14시", "t", new java.util.ArrayList<>())).isNull();
     }
 
     @Test

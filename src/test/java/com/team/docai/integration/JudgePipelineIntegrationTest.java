@@ -207,7 +207,7 @@ class JudgePipelineIntegrationTest {
         assertThat(row.get("status")).isEqualTo("COMPLETED");
         assertThat(row.get("progress_step")).isEqualTo("DONE");
         assertThat(row.get("fail_reason")).isNull();
-        assertThat(row.get("prompt_version")).isEqualTo("extract-v3/judge-v1");
+        assertThat(row.get("prompt_version")).isEqualTo("extract-v4/judge-v2");
         assertThat(jdbc.queryForObject("select latest_analysis_id from contract_version where version_id = ?",
                 Long.class, versionId)).isEqualTo(analysisId);
         // 계약서 이름은 완료 트랜잭션이 끝난 뒤에 넣는다

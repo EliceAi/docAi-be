@@ -21,7 +21,7 @@ import java.time.Duration;
  */
 @ConfigurationProperties(prefix = "docai.analysis")
 public record AnalysisProperties(
-        @DefaultValue("extract-v3/judge-v1") String promptVersion,
+        @DefaultValue("extract-v4/judge-v2") String promptVersion,
         @DefaultValue("5") int pagesPerChunk,
         @DefaultValue("5") int requestsPerMinute,
         @DefaultValue("4") int executorThreads,

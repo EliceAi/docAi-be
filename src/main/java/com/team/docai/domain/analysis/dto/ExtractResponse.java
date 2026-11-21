@@ -39,8 +39,17 @@ public record ExtractResponse(
     public record TypeCheck(boolean matchesSelected, String detectedTypeName) {
     }
 
-    /** @param readState READ(거의 다 읽음) / PARTIAL(일부 흐림·잘림) / UNREADABLE(글자를 거의 못 읽음) */
-    public record PageRead(int pageNo, String readState) {
+    /**
+     * @param readState       READ(거의 다 읽음) / PARTIAL(실제로 글자를 못 읽은 곳이 있음) / UNREADABLE(글자를 거의 못 읽음)
+     * @param unreadableParts PARTIAL 일 때 못 읽은 곳 설명 (예: "제4조 ② 마지막 줄 끝이 잘림"). READ 면 빈 배열.
+     *                        PARTIAL 인데 비어 있으면 서버가 READ 로 낮춘다 (ExtractMerger)
+     */
+    public record PageRead(int pageNo, String readState, List<String> unreadableParts) {
+
+        /** unreadableParts 없이 만든다 (빈 목록). 테스트용 */
+        public PageRead(int pageNo, String readState) {
+            this(pageNo, readState, List.of());
+        }
     }
 
     /**
@@ -86,6 +95,11 @@ public record ExtractResponse(
      *
      * @param basePay      임금: 최저임금 비교에 쓸 금액. 기본급(+ 매월 고정 지급 수당), 연장·야간·휴일 수당은 뺌. 구분이 안 되면 null
      * @param monthlyHours 근로시간: 계약서에 적힌 월 기준시간 (예: 월 209시간, 통상임금 기준시간 수 209)
+     * @param workStart    근로시간: 시업 시각 "HH:mm" (24시간제). 적혀 있지 않으면 null
+     * @param workEnd      근로시간: 종업 시각 "HH:mm" (24시간제). 적혀 있지 않으면 null
+     * @param breaks       근로시간: 시각으로 적힌 휴게시간 (예: 12:00~13:00). 없으면 빈 배열 (휴게 규칙은 서버가 계산)
+     * @param breakMinutes 근로시간: 시각 없이 길이만 적힌 휴게시간. 하루 휴게를 모두 더한 분 (예: 휴게 1시간 → 60, 30분씩 2회 → 60). 없으면 null
+     * @param noBreak      근로시간: "휴게시간 없음"처럼 휴게가 없다고 적혀 있으면 true. 휴게에 대한 말이 없으면 null
      */
     public record ValueJson(
             String type,
@@ -95,12 +109,28 @@ public record ExtractResponse(
             Double daysPerWeek,
             Double monthlyHours,
             String start,
-            String end
+            String end,
+            String workStart,
+            String workEnd,
+            List<TimeRange> breaks,
+            Integer breakMinutes,
+            Boolean noBreak
     ) {
-        /** 선택 칸(basePay, monthlyHours) 없이 만든다. 테스트·이전 결과용 */
+        /** 선택 칸(basePay, monthlyHours, 근로 시각·휴게) 없이 만든다. 테스트·이전 결과용 */
         public ValueJson(String type, Long amount, Double hoursPerDay, Double daysPerWeek, String start, String end) {
             this(type, amount, null, hoursPerDay, daysPerWeek, null, start, end);
         }
+
+        /** 근로 시각·휴게 칸 없이 만든다. 테스트·이전 결과용 */
+        public ValueJson(String type, Long amount, Long basePay, Double hoursPerDay, Double daysPerWeek,
+                         Double monthlyHours, String start, String end) {
+            this(type, amount, basePay, hoursPerDay, daysPerWeek, monthlyHours, start, end, null, null, List.of(),
+                    null, null);
+        }
+    }
+
+    /** 시각 구간 "HH:mm" ~ "HH:mm" (휴게시간) */
+    public record TimeRange(String start, String end) {
     }
 
     public record DateItem(String label, String date, String clauseKey) {
